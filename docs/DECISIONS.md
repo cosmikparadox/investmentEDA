@@ -113,3 +113,12 @@ Consequence: each `ingest/*.py` `run()` starts with an `INSERT OR IGNORE INTO
 feed_registry`, using the provider/upstream/cadence/endpoint already written down
 in `docs/feeds/<feed>.md`. `feed_registry` is therefore empty until the first
 ingestor runs, which is correct: no feed has run yet.
+
+**2026-09-04 — Keys may come from the shell environment as well as `.env`.**
+Why: `.env` is a file of environment variables, so a cloud session that sets
+`EIA_API_KEY` and `FRED_API_KEY` in its own environment settings is the same
+mechanism by a different route, not a second configuration system. Code reads
+`os.environ` and does not care which filled it. This matters because pasting a
+key into a chat window to get it into a container is worse than setting it once
+in the environment. Rules out: any config file, config class or settings module
+beyond `.env`. Amends the README line that said `.env` only.
