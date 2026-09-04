@@ -49,12 +49,27 @@ Key works, both series return HTTP 200 with the documented shape.
   2026-08-31 is `"."` for Brent but has a real value for OVX: London was
   shut, Chicago was not. Store these as `NULL` in `value`, do not skip the
   row. A published gap is information.
-- `realtime_start`/`realtime_end` come back equal to each other when the
-  vintage parameters are not passed, i.e. "this is one snapshot, the current
-  one". They are **not** necessarily today's date: on a re-check later the
-  same day, `OVXCLS` returned `2026-09-04` (today) but `DCOILBRENTEU` returned
-  `2026-09-02`. The returned realtime date is the day that series was last
-  refreshed, not the day you asked. "Vintage" here means "the version of the
-  series as it stood on some date" — so an ingestor must store the
-  `realtime_start` FRED actually returns, and must not substitute today's date
-  for it, or a stale series gets stamped with a vintage it does not have.
+- **`realtime_start` is not today's date.** It comes back equal to
+  `realtime_end` when the vintage parameters are not passed, i.e. "this is one
+  snapshot, the current one" — but the date is the day *that series* was last
+  refreshed. Confirmed on 2026-09-04: `OVXCLS` returned `2026-09-04`,
+  `DCOILBRENTEU` returned `2026-09-02`, in calls seconds apart. The
+  `fred/series` endpoint agrees: Brent's `last_updated` is `2026-09-02`.
+  (Watch out when checking this by hand — FRED's responses are cached, and an
+  early call of ours came back with today's date for both before settling
+  down.)
+
+  **Where each date goes in `observations`, because this is a trap:**
+
+  | column | value | why |
+  |---|---|---|
+  | `received_at` | our own clock at fetch time | It is *our* vintage — when we had it. It is part of the primary key, which is what makes a re-run append instead of collide. |
+  | `source_asof` | FRED's `realtime_start` | DESIGN.md: "when the SOURCE says it published, if known". Exactly this. |
+
+  Putting FRED's `realtime_start` into `received_at` looks careful and breaks
+  the design. Brent's stays `2026-09-02` until FRED next refreshes it, so every
+  daily run would write an identical primary key, `INSERT OR IGNORE` would
+  silently drop the rows, and the record of "we checked on these days and it
+  had not changed" would be lost. The Week 2 idempotency test — run twice, row
+  count doubles — would fail. Two columns exist precisely so neither date has
+  to stand in for the other.

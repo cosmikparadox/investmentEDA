@@ -122,3 +122,18 @@ mechanism by a different route, not a second configuration system. Code reads
 key into a chat window to get it into a container is worse than setting it once
 in the environment. Rules out: any config file, config class or settings module
 beyond `.env`. Amends the README line that said `.env` only.
+
+**2026-09-04 — `received_at` is our clock; `source_asof` is the source's.**
+Why: a check of the FRED keys found that `realtime_start` is the date that
+series was last refreshed, not today — Brent returned 2026-09-02 while OVX
+returned 2026-09-04 in calls seconds apart. The tempting conclusion is that an
+ingestor should stamp `received_at` with the returned `realtime_start` rather
+than "substitute" its own clock. That is wrong and would break rule 1's
+mechanism: `received_at` is in the primary key, so a series FRED has not
+refreshed for a week would produce an identical key on every run, `INSERT OR
+IGNORE` would drop the rows, and the Week 2 idempotency test (run twice, row
+count doubles) would fail. `realtime_start` belongs in `source_asof`, which
+DESIGN.md defines as "when the SOURCE says it published, if known". Rules out:
+any ingestor deriving `received_at` from anything but its own clock at fetch
+time. Recorded in `docs/feeds/fred.md` as a table, since this is the first
+place the two time axes could plausibly be confused.
