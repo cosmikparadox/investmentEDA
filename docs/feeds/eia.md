@@ -25,7 +25,9 @@ offset=0   length=5000
 
 ## Response
 `response.data[]` with `period`, `value` (**a string — cast to float**), `units`
-("thousand barrels"), `series-description`. `response.warnings` present if the
+(the literal string is **`"MBBL"`**, not "thousand barrels" — M is the Roman
+thousand, so MBBL means thousand barrels; `series-description` spells it out as
+"Thousand Barrels"), `series-description`. `response.warnings` present if the
 5000-row cap was hit.
 
 ## Limits
