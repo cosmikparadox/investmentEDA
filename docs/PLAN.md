@@ -14,7 +14,7 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [x] Owner: install `uv`, create the repo, `uv init`, add `duckdb pandas httpx streamlit pytest python-dotenv`.
 - [x] Owner: create `data/bronze/` and add `data/` to `.gitignore`.
 - [x] Owner: get a free EIA API key (eia.gov/opendata). Put it in `.env`. Never commit it.
-- [ ] Owner: get a free FRED API key (fred.stlouisfed.org). Same.
+- [x] Owner: get a free FRED API key (fred.stlouisfed.org). Same.
 - [x] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them.
 - [x] CC: `db/make_split.py` — fixed seed, 25% of ISO weeks 2015–2030 marked holdout, writes `db/split_mask.csv`. Commit the CSV. It never changes again.
 - [ ] Owner: migrate anything from `docs/OBSERVATIONS.md` into `observation_log` by hand once the table exists.

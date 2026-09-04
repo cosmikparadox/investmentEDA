@@ -34,3 +34,21 @@ For full revision history: `realtime_start=1776-07-04&realtime_end=9999-12-31`.
 |---|---|---|---|
 | `brent_spot` | `DCOILBRENTEU` | `usd_per_bbl` | `benchmark:brent` |
 | `ovx` | `OVXCLS` | `index` | `benchmark:brent` |
+
+## Verified on a live call, 2026-09-04
+Key works, both series return HTTP 200 with the documented shape.
+
+- **The two series do not end on the same day.** `OVXCLS` was current to
+  2026-09-03; `DCOILBRENTEU` only to 2026-09-01. Brent runs two or three
+  business days behind. An ingestor that assumes both series cover the same
+  date range will be wrong most days. Ask for a window and store whatever
+  comes back.
+- **The `"."` missing-value marker is real and common.** 174 rows of
+  `DCOILBRENTEU` for 2026 to date, 6 of them `"."` — New Year's Day, Good
+  Friday, the early-May and late-August UK bank holidays. Note that
+  2026-08-31 is `"."` for Brent but has a real value for OVX: London was
+  shut, Chicago was not. Store these as `NULL` in `value`, do not skip the
+  row. A published gap is information.
+- `realtime_start`/`realtime_end` both come back as today's date when the
+  vintage parameters are not passed, i.e. "this is what the series looks like
+  right now".
