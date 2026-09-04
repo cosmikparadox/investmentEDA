@@ -1,0 +1,39 @@
+# controlroom
+
+Personal commodity and supply-chain intelligence system. Free data in, vintage
+history kept, slow decisions out. No execution, no agents, no models until the
+data layer is proven.
+
+Start with `CLAUDE.md`, then `docs/SCOPE.md`, then `docs/PLAN.md`.
+
+## Working model
+
+Two sessions, one repo:
+
+- **Coordination and research** (claude.ai chat): research feeds and methods,
+  answer `docs/QUESTIONS.md`, review Claude Code's output, rewrite the plan at
+  each milestone. Holds no state that is not in this repo.
+- **Build** (Claude Code): works `docs/PLAN.md` top to bottom, writes to
+  `docs/DECISIONS.md`, asks via `docs/QUESTIONS.md`, never expands scope.
+- **Owner:** runs commands, reads every diff, hand-writes the first ingestor,
+  explains the system back at each milestone.
+
+If either session is being asked to remember something, write it down instead.
+
+## Where things live
+
+| Thing | Lives in | Why |
+|---|---|---|
+| Everything operational: scope, design, plan, decisions, questions, feed specs, code | **This repo** | Single source of truth. Claude Code and the owner work here. |
+| Research reports, infonomics primer | `docs/research/` in this repo **and** the claude.ai Project knowledge | Reference. Doesn't change. The coordination session needs it in context. |
+| Current state of the build | `docs/DECISIONS.md`, `docs/QUESTIONS.md`, `docs/PLAN.md` tick-boxes | The coordination session reads these when you upload them. It does not remember. |
+| API keys | `.env` only | Never committed, never pasted into any chat. |
+| Throwaway visuals from chats | Nowhere | Delete them. If one turns out to matter, rebuild it from data in this repo. |
+
+## Session handoff protocol
+
+Starting a coordination session: upload `docs/DECISIONS.md` and `docs/QUESTIONS.md`
+(and `docs/RETRO.md` at milestones). That is the whole context transfer.
+
+Starting a Claude Code session: it reads `CLAUDE.md` automatically. Tell it which
+week of `docs/PLAN.md` you are on.
