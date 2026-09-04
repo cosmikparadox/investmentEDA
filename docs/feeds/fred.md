@@ -49,6 +49,12 @@ Key works, both series return HTTP 200 with the documented shape.
   2026-08-31 is `"."` for Brent but has a real value for OVX: London was
   shut, Chicago was not. Store these as `NULL` in `value`, do not skip the
   row. A published gap is information.
-- `realtime_start`/`realtime_end` both come back as today's date when the
-  vintage parameters are not passed, i.e. "this is what the series looks like
-  right now".
+- `realtime_start`/`realtime_end` come back equal to each other when the
+  vintage parameters are not passed, i.e. "this is one snapshot, the current
+  one". They are **not** necessarily today's date: on a re-check later the
+  same day, `OVXCLS` returned `2026-09-04` (today) but `DCOILBRENTEU` returned
+  `2026-09-02`. The returned realtime date is the day that series was last
+  refreshed, not the day you asked. "Vintage" here means "the version of the
+  series as it stood on some date" — so an ingestor must store the
+  `realtime_start` FRED actually returns, and must not substitute today's date
+  for it, or a stale series gets stamped with a vintage it does not have.
