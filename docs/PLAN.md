@@ -11,14 +11,14 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 
 ## Week 1 — environment and first feed
 
-- [ ] Owner: install `uv`, create the repo, `uv init`, add `duckdb pandas httpx streamlit pytest python-dotenv`.
-- [ ] Owner: create `data/bronze/` and add `data/` to `.gitignore`.
+- [x] Owner: install `uv`, create the repo, `uv init`, add `duckdb pandas httpx streamlit pytest python-dotenv`.
+- [x] Owner: create `data/bronze/` and add `data/` to `.gitignore`.
 - [ ] Owner: get a free EIA API key (eia.gov/opendata). Put it in `.env`. Never commit it.
 - [ ] Owner: get a free FRED API key (fred.stlouisfed.org). Same.
-- [ ] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them.
-- [ ] CC: `db/make_split.py` — fixed seed, 25% of ISO weeks 2015–2030 marked holdout, writes `db/split_mask.csv`. Commit the CSV. It never changes again.
+- [x] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them.
+- [x] CC: `db/make_split.py` — fixed seed, 25% of ISO weeks 2015–2030 marked holdout, writes `db/split_mask.csv`. Commit the CSV. It never changes again.
 - [ ] Owner: migrate anything from `docs/OBSERVATIONS.md` into `observation_log` by hand once the table exists.
-- [ ] CC: `db/seed_entities.sql` with the three v0 entities and their aliases.
+- [x] CC: `db/seed_entities.sql` with the three v0 entities and their aliases.
 - [ ] **Owner writes** `ingest/fred.py` by hand, ugly is fine. It is the simplest API of the three. Goal: you understand what an ingestor is by having written one.
 - [ ] CC: review the owner's FRED ingestor, suggest fixes, explain each one.
 - [ ] Milestone: `python -m ingest.fred` puts Brent and OVX rows into `observations`. Query them in the DuckDB CLI.

@@ -71,3 +71,45 @@ because the moment it exists it gets used. Rules out: the app ever reading
 Why: PortWatch is an ArcGIS layer, not a plain REST API. Discovering an awkward
 response shape mid-build costs a week; discovering it in a research session
 costs an hour.
+
+**2026-09-04 — Dependencies are exactly the six named in PLAN.md.**
+Why: `duckdb pandas httpx streamlit pytest python-dotenv` and nothing else.
+Transitive dependencies (pyarrow, numpy, altair and so on) come in via those and
+are pinned in `uv.lock`. Rules out: adding a library without a new entry here.
+
+**2026-09-04 — `obs_id` comes from a DuckDB sequence, not AUTOINCREMENT.**
+Why: DESIGN.md specifies `obs_id INTEGER PRIMARY KEY` but DuckDB has no
+AUTOINCREMENT keyword, so `observation_log_id_seq` supplies the value via
+`DEFAULT nextval(...)`. Same behaviour, one extra object in `schema.sql`.
+The boring option; the alternative was making the app compute the next id, which
+would race the moment anything else writes.
+
+**2026-09-04 — `noted_at` defaults to `current_localtimestamp()`, not `now()`.**
+Why: DuckDB's `now()` returns a timestamp *with* a time zone, and the column is a
+plain `TIMESTAMP`. `current_localtimestamp()` returns local wall-clock time and
+needs no cast. Consequence: everything in this database is naive local time.
+Fine for a single-machine, single-owner v0; revisit if the system ever runs
+somewhere other than the owner's laptop.
+
+**2026-09-04 — Holdout split: seed 20260904, ISO weeks 2015-W01 to 2030-W52.**
+Why: 835 weeks, 209 (25.0%) marked holdout, written once to `db/split_mask.csv`
+and committed. `db/make_split.py` refuses to overwrite an existing CSV and errors
+loudly if regeneration would produce something different, so the split cannot
+drift silently. The CSV is the source of truth; the `split_mask` table is a copy
+of it loaded by `db/init.py`.
+
+**2026-09-04 — `db/init.py` is idempotent and loads the split mask itself.**
+Why: `CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE VIEW` and `INSERT OR IGNORE`
+throughout, so running it again re-asserts the schema without touching ingested
+rows. It loads `split_mask.csv` because `observations_explore` is empty and
+silently wrong without it — a database that builds but hides everything is worse
+than one that will not build. Rules out: a separate load step to forget.
+
+**2026-09-04 — `feed_registry` is not seeded; each ingestor inserts its own row.**
+Why: rule 2 says every feed declares its upstream, and the reliable way to keep
+that true is for the code that fetches a feed to be the code that registers it —
+a seed file would drift from the ingestors the first time an endpoint changes.
+Consequence: each `ingest/*.py` `run()` starts with an `INSERT OR IGNORE INTO
+feed_registry`, using the provider/upstream/cadence/endpoint already written down
+in `docs/feeds/<feed>.md`. `feed_registry` is therefore empty until the first
+ingestor runs, which is correct: no feed has run yet.
