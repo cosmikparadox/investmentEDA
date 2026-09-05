@@ -19,8 +19,8 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [x] CC: `db/make_split.py` — fixed seed, 25% of ISO weeks 2015–2030 marked holdout, writes `db/split_mask.csv`. Commit the CSV. It never changes again.
 - [ ] Owner: migrate anything from `docs/OBSERVATIONS.md` into `observation_log` by hand once the table exists.
 - [x] CC: `db/seed_entities.sql` with the three v0 entities and their aliases.
-- [ ] **Owner writes** `ingest/fred.py` by hand, ugly is fine. It is the simplest API of the three. Goal: you understand what an ingestor is by having written one.
-- [ ] CC: review the owner's FRED ingestor, suggest fixes, explain each one.
+- [x] ~~**Owner writes** `ingest/fred.py` by hand~~ **CC wrote it, owner's call 2026-09-05.** See DECISIONS. The learning goal moves to the walkthrough and to Week 4's "explain every table and column without looking", which is unchanged.
+- [x] CC: walk the owner through `ingest/fred.py` line by line.
 - [ ] Milestone: `python -m ingest.fred` puts Brent and OVX rows into `observations`. Query them in the DuckDB CLI.
 
 ## Week 2 — the other two feeds and the idempotency test

@@ -137,3 +137,22 @@ DESIGN.md defines as "when the SOURCE says it published, if known". Rules out:
 any ingestor deriving `received_at` from anything but its own clock at fetch
 time. Recorded in `docs/feeds/fred.md` as a table, since this is the first
 place the two time axes could plausibly be confused.
+
+**2026-09-05 — CC writes `ingest/fred.py`; the owner does not hand-write it.**
+Why: owner's explicit call, reversing the 2026-09-04 entry "Owner hand-writes the
+first ingestor". That entry's reason was that the owner should not own a system
+they cannot debug. The reason still stands, so it is met a different way: CC
+writes the file and walks the owner through it line by line, and the Week 4 gate
+— explain every table and column out loud without looking — is unchanged and
+still the real test. If that gate is failed, this decision was wrong and should
+be revisited rather than the gate lowered.
+
+**2026-09-05 — Ingestors pull from 2015-01-01, not from the start of history.**
+Why: `split_mask` only covers ISO weeks 2015 to 2030, and `observations_explore`
+inner-joins it, so a row dated before 2015-W01 has no split assignment and would
+silently vanish from every view — present in the table, invisible in the app,
+which is the worst of both. DCOILBRENTEU goes back to 1987; that history is not
+useful until the split is extended, which it never will be, because the CSV is
+committed and fixed. Rules out: full-history pulls without first extending
+`split_mask`. Overridable per call via `observation_start` if a query ever needs
+the older data by hand.
