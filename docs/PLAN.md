@@ -29,7 +29,7 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [ ] Research: same for EIA crude stocks series ID (weekly, excluding SPR); `docs/feeds/eia.md`.
 - [ ] CC: `ingest/eia.py` following the same shape as the owner's FRED ingestor.
 - [ ] CC: `ingest/portwatch.py`. Note: PortWatch may return the full history each call. That is fine — it all gets one `received_at`, and the primary key handles it.
-- [ ] CC: `tests/test_idempotency.py` with fixture payloads for all three.
+- [~] CC: `tests/test_idempotency.py` with fixture payloads for all three. **FRED done (16 tests, 2026-09-05); EIA and PortWatch fixtures still to add.**
 - [ ] Owner: run the tests. Break one on purpose. Understand why it fails.
 - [ ] CC: `Makefile` with `init`, `ingest`, `test`, `dashboard` targets.
 - [ ] Milestone: `make ingest` twice in a row; row count in `observations` exactly doubles.

@@ -12,3 +12,9 @@ dependencies = [
     "python-dotenv>=1.2.3",
     "streamlit>=1.63.0",
 ]
+
+[tool.pytest.ini_options]
+# Run pytest from the repo root and let tests import `ingest` and `db` as
+# ordinary packages, without installing anything.
+pythonpath = ["."]
+testpaths = ["tests"]

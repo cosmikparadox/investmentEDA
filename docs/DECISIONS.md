@@ -156,3 +156,42 @@ useful until the split is extended, which it never will be, because the CSV is
 committed and fixed. Rules out: full-history pulls without first extending
 `split_mask`. Overridable per call via `observation_start` if a query ever needs
 the older data by hand.
+
+**2026-09-05 — Bronze stores the response body verbatim, inside an envelope.**
+Why: the first version re-serialised FRED's JSON, which preserved the content but
+not the bytes. Bronze is supposed to be evidence, and evidence you have
+reformatted is weaker evidence. Each file is now
+`{envelope_version, feed_id, received_at, endpoint, request, responses}` where
+each response holds the exact text off the wire plus its status code. The
+envelope adds provenance — when we asked, what we asked for — so a file is
+readable on its own in two years. The API key is deliberately not recorded:
+a secret in a data file is a secret you forget you wrote down. Rules out:
+parsing, filtering or reformatting anything on the way into bronze.
+
+**2026-09-05 — Bronze has a read path, not just a write path.**
+Why: the stated justification for bronze was "if the parser is wrong, re-read
+the file instead of re-fetching", and nothing implemented that — the insurance
+could not be claimed. `read_bronze()` and `run_from_bronze()` now exist, wired to
+`--reparse`. Verified by deleting the database and rebuilding 12,180 rows across
+two vintages from bronze alone, with `FRED_API_KEY` unset. Re-parsed rows keep
+the file's original `received_at`, because that is genuinely when the data
+arrived; inventing a fresh one would claim a vintage that never happened. The
+open question of how to repair a vintage stored *wrongly* is Q1 in
+docs/QUESTIONS.md and is deliberately not answered here.
+
+**2026-09-05 — Validation checks shape, never plausibility.**
+Why: a reply is refused if a series is missing, empty, has a repeated date, has a
+date outside the window we asked for, or has a value that is neither a number
+nor FRED's `"."`. It is not refused for being surprising. A rule like "an oil
+price must be positive" would have rejected April 2020, when WTI genuinely
+settled below zero — the single most informative day in the modern history of
+the series. There is a test asserting a negative price is accepted. Rules out:
+range checks, outlier rejection, and smoothing anywhere in the ingest path.
+
+**2026-09-05 — Tests brought forward from week 2, and run offline.**
+Why: until now the only thing verifying rule 1 was a person running the ingestor
+twice and reading the counts. `tests/test_idempotency.py` has 16 tests against a
+saved payload in `tests/fixtures/`, so they need no API key, no network and no
+`data/` directory, and give the same answer on any machine. They found a real
+bug on first run: `parse()` raised on any bronze file outside the repo, which
+`--reparse` accepts by design. Rules out: tests that call a live API.

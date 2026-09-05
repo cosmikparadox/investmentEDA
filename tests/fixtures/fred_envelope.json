@@ -1,0 +1,24 @@
+{
+  "envelope_version": 1,
+  "feed_id": "fred_brent_ovx",
+  "received_at": "2026-09-05T06:36:09.817248",
+  "endpoint": "https://api.stlouisfed.org/fred/series/observations",
+  "request": {
+    "series": [
+      "DCOILBRENTEU",
+      "OVXCLS"
+    ],
+    "observation_start": "2015-01-01",
+    "file_type": "json"
+  },
+  "responses": {
+    "DCOILBRENTEU": {
+      "status": 200,
+      "body": "{\n  \"realtime_start\": \"2026-09-02\",\n  \"realtime_end\": \"2026-09-02\",\n  \"observation_start\": \"2015-01-01\",\n  \"observation_end\": \"9999-12-31\",\n  \"units\": \"lin\",\n  \"output_type\": 1,\n  \"file_type\": \"json\",\n  \"order_by\": \"observation_date\",\n  \"sort_order\": \"asc\",\n  \"count\": 4,\n  \"offset\": 0,\n  \"limit\": 100000,\n  \"observations\": [\n    {\n      \"realtime_start\": \"2026-09-02\",\n      \"realtime_end\": \"2026-09-02\",\n      \"date\": \"2026-01-01\",\n      \"value\": \".\"\n    },\n    {\n      \"realtime_start\": \"2026-09-02\",\n      \"realtime_end\": \"2026-09-02\",\n      \"date\": \"2026-01-02\",\n      \"value\": \"78.40\"\n    },\n    {\n      \"realtime_start\": \"2026-09-02\",\n      \"realtime_end\": \"2026-09-02\",\n      \"date\": \"2026-01-05\",\n      \"value\": \"79.15\"\n    },\n    {\n      \"realtime_start\": \"2026-09-02\",\n      \"realtime_end\": \"2026-09-02\",\n      \"date\": \"2026-01-06\",\n      \"value\": \"80.02\"\n    }\n  ]\n}"
+    },
+    "OVXCLS": {
+      "status": 200,
+      "body": "{\n  \"realtime_start\": \"2026-09-04\",\n  \"realtime_end\": \"2026-09-04\",\n  \"observation_start\": \"2015-01-01\",\n  \"observation_end\": \"9999-12-31\",\n  \"units\": \"lin\",\n  \"output_type\": 1,\n  \"file_type\": \"json\",\n  \"order_by\": \"observation_date\",\n  \"sort_order\": \"asc\",\n  \"count\": 4,\n  \"offset\": 0,\n  \"limit\": 100000,\n  \"observations\": [\n    {\n      \"realtime_start\": \"2026-09-04\",\n      \"realtime_end\": \"2026-09-04\",\n      \"date\": \"2026-01-01\",\n      \"value\": \".\"\n    },\n    {\n      \"realtime_start\": \"2026-09-04\",\n      \"realtime_end\": \"2026-09-04\",\n      \"date\": \"2026-01-02\",\n      \"value\": \"31.55\"\n    },\n    {\n      \"realtime_start\": \"2026-09-04\",\n      \"realtime_end\": \"2026-09-04\",\n      \"date\": \"2026-01-05\",\n      \"value\": \"32.10\"\n    },\n    {\n      \"realtime_start\": \"2026-09-04\",\n      \"realtime_end\": \"2026-09-04\",\n      \"date\": \"2026-01-06\",\n      \"value\": \"30.98\"\n    }\n  ]\n}"
+    }
+  }
+}
