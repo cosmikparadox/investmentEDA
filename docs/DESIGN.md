@@ -50,7 +50,8 @@ CREATE TABLE observations (
     received_at    TIMESTAMP NOT NULL,  -- when WE fetched it. The vintage.
     source_asof    TIMESTAMP,       -- when the SOURCE says it published, if known
     bronze_path    TEXT NOT NULL,   -- which raw file this row came from
-    PRIMARY KEY (feed_id, series_id, entity_id, period_start, received_at)
+    parse_version  INTEGER NOT NULL DEFAULT 1,  -- which reading of that file this is
+    PRIMARY KEY (feed_id, series_id, entity_id, period_start, received_at, parse_version)
 );
 ```
 
@@ -60,11 +61,40 @@ again (revised) on 17 March produces two rows. Querying "what did we know on 12
 March" is a `WHERE received_at <= '2026-03-12'` filter plus taking the latest
 vintage per period. Without this, every backtest silently uses data from the future.
 
-**The "latest known" view**, which is what the dashboard reads:
+**Why a third axis, `parse_version`.** `received_at` answers "when did the
+source's number reach us". It cannot answer "and did we read it correctly". If a
+parser is found to have been wrong — a decimal point, a unit, a mis-read field —
+the fix is to re-read the same bronze file with the corrected parser, keep the
+original `received_at`, and write the corrected rows as `parse_version = 2`. The
+wrong rows stay for ever as evidence of what we believed at the time. Nothing is
+updated and nothing is deleted, so the repair is itself append-only and
+auditable.
+
+The two rules that keep the axes from blurring into each other:
+
+- a new `received_at` is **only** for a fresh fetch from the source;
+- `parse_version` increments **only** when re-reading a bronze file we already
+  hold.
+
+Putting a corrected parse under a new `received_at` would misrepresent our own
+bug as a revision by the source, which is exactly the confusion the bitemporal
+design exists to prevent. See docs/QUESTIONS.md Q1, answered 2026-09-11.
+
+**The "latest known" view**, which is what the dashboard reads. Two stages, in
+this order: first keep the highest `parse_version` within a vintage, then keep
+the most recent vintage. The other order would let a corrected old vintage
+outrank an uncorrected newer one.
 
 ```sql
 CREATE VIEW observations_latest AS
-SELECT * FROM observations
+WITH best_parse AS (
+    SELECT * FROM observations
+    QUALIFY row_number() OVER (
+        PARTITION BY feed_id, series_id, entity_id, period_start, received_at
+        ORDER BY parse_version DESC
+    ) = 1
+)
+SELECT * FROM best_parse
 QUALIFY row_number() OVER (
     PARTITION BY feed_id, series_id, entity_id, period_start
     ORDER BY received_at DESC
@@ -72,6 +102,23 @@ QUALIFY row_number() OVER (
 ```
 
 Point-in-time queries are the same view with a `received_at <= :asof` filter added.
+
+## Silver — `parse_corrections`
+
+Why a bronze file was ever read a second time. Append-only. Without it, a jump
+from `parse_version` 1 to 2 in `observations` is a mystery in six months.
+
+```sql
+CREATE TABLE parse_corrections (
+    correction_id INTEGER PRIMARY KEY,
+    feed_id       TEXT NOT NULL,
+    bronze_path   TEXT NOT NULL,   -- the file that was re-read
+    old_version   INTEGER NOT NULL,
+    new_version   INTEGER NOT NULL,
+    reason        TEXT NOT NULL,   -- what the parser got wrong, in plain words
+    corrected_at  TIMESTAMP NOT NULL
+);
+```
 
 ## Silver — `entity_registry`
 

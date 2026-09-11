@@ -8,17 +8,26 @@ data an ingestor has written into `observations`.
 What it does, in order:
   1. makes sure data/ and data/bronze/ exist
   2. opens (creating if needed) data/controlroom.duckdb
-  3. runs db/schema.sql          -> the tables and views
-  4. loads db/split_mask.csv     -> the committed explore/holdout split
-  5. runs db/seed_entities.sql   -> the three v0 entities and their aliases
-  6. prints what is in there now
+  3. applies any migrations      -> brings an older database up to date
+  4. runs db/schema.sql          -> the tables and views
+  5. loads db/split_mask.csv     -> the committed explore/holdout split
+  6. runs db/seed_entities.sql   -> the three v0 entities and their aliases
+  7. prints what is in there now
 
 Run with:  uv run python db/init.py
 """
 
+import sys
 from pathlib import Path
 
 import duckdb
+
+# db/init.py is run directly (`uv run python db/init.py`), so the repo root is
+# not on the import path by default. This puts it there, so `core` and the
+# migrations next door can be imported.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from db import migrations  # noqa: E402  (must come after the path line above)
 
 # Paths are worked out from this file's location, so the script runs correctly
 # no matter which directory you call it from.
@@ -61,7 +70,10 @@ def main() -> None:
     # connect() creates the database file if it does not exist yet.
     conn = duckdb.connect(str(DB_PATH))
     try:
-        conn.execute(SCHEMA_SQL.read_text())
+        schema_sql = SCHEMA_SQL.read_text()
+        # An older database may predate a column; bring it up to date first.
+        migrations.run_all(conn, schema_sql)
+        conn.execute(schema_sql)
         load_split_mask(conn, SPLIT_CSV)
         conn.execute(SEED_SQL.read_text())
 

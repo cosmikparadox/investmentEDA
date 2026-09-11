@@ -44,6 +44,8 @@ to a temp file and rename (so a crash cannot leave half a file), and raise
 `StorageError` rather than overwrite if the path already exists. CC reviews.
 Alternative: CC writes it first so the owner has it to migrate onto.
 
+## Resolved
+
 **Q1 (2026-09-05, CC) — How do we repair a vintage that was stored wrongly?**
 
 Bronze now has a working read path: `ingest/fred.py --reparse FILE` re-reads a
@@ -74,7 +76,43 @@ the core table and belongs to the design, not to the ingestor. Not urgent: it
 matters the first time a parser is wrong, which has not happened. Until it is
 answered, `--reparse` reports what it skipped rather than pretending to fix it.
 
-## Resolved
+**Answered 2026-09-11 by the owner: none of the three — a fourth option,
+`parse_version`.**
+
+> Add `parse_version INTEGER NOT NULL DEFAULT 1` to `observations` and include
+> it in the primary key. A parser correction re-parses the ORIGINAL bronze file
+> with the ORIGINAL `received_at` and `parse_version = previous + 1`. The bad
+> rows stay forever as evidence. Nothing is updated or deleted. The fix is
+> itself append-only and auditable.
+>
+> `observations_latest` picks `max(parse_version)` within each
+> `(feed_id, series_id, entity_id, period_start, received_at)` FIRST, then
+> `max(received_at)` per period.
+>
+> Add a small append-only table recording why: `parse_corrections`.
+>
+> Rules: a new `received_at` is ONLY for a fresh fetch, never for a re-parse.
+> `parse_version` increments ONLY when re-parsing an existing bronze file.
+> `run()` gets an optional `bronze_path` parameter: if given, skip the fetch and
+> re-parse that file with the next `parse_version`.
+>
+> Rejected: `superseded_by` (needs UPDATE); DELETE and reinsert (destroys
+> evidence); a new `received_at` (misrepresents a parser bug as a source
+> revision).
+
+Done by CC on 2026-09-11: the column and the primary key, the two-stage
+`observations_latest`, the `parse_corrections` table, all three written into
+DESIGN.md, and `db/migrations.py` so an existing database gains the column
+without losing a row (a primary key cannot be altered in place, so it is a
+rebuild inside one transaction; verified on a database holding 120 rows, two
+vintages and a hand-written note). 10 tests in `tests/test_views.py`, including
+the acceptance test: a wrong value at version 1 and a corrected one at version 2
+both exist, and `observations_latest` shows only the corrected value.
+
+Left for the owner's `ingest/fred.py` migration (Q2): the `bronze_path`
+parameter on `run()`, looking up the next `parse_version` for a file, and
+writing the `parse_corrections` row. `ingest/fred.py` today inserts by name and
+takes the default of 1, so its behaviour is unchanged until then.
 
 **Q2 (2026-09-11, CC) — Does `ingest/fred.py` get retrofitted to the new
 `core/` layout, or does it stay as it is until the second ingestor?**

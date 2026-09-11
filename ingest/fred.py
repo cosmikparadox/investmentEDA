@@ -288,8 +288,16 @@ def store(conn: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
     # silently. The key includes received_at, so this only ever collides with a
     # re-run at the identical timestamp — or with a re-parse of a bronze file
     # already loaded, which is why --reparse warns instead of pretending.
+    # Columns are named rather than positional, so `parse_version` takes its
+    # default of 1 — this is the first reading of the payload. A re-read after a
+    # parser fix inserts version 2 explicitly; see docs/QUESTIONS.md Q1.
     conn.executemany(
-        "INSERT OR IGNORE INTO observations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        """
+        INSERT OR IGNORE INTO observations
+            (feed_id, series_id, entity_id, period_start, period_end,
+             value, unit, received_at, source_asof, bronze_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
         rows,
     )
     after = conn.execute("SELECT count(*) FROM observations").fetchone()[0]

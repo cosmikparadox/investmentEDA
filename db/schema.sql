@@ -89,7 +89,36 @@ CREATE TABLE IF NOT EXISTS observations (
     received_at    TIMESTAMP NOT NULL,  -- when WE fetched it. The vintage.
     source_asof    TIMESTAMP,       -- when the SOURCE says it published, if known
     bronze_path    TEXT NOT NULL,   -- which raw file this row came from
-    PRIMARY KEY (feed_id, series_id, entity_id, period_start, received_at)
+    parse_version  INTEGER NOT NULL DEFAULT 1,  -- which reading of that file this is
+    PRIMARY KEY (feed_id, series_id, entity_id, period_start, received_at, parse_version)
+);
+-- parse_version, in plain terms: `received_at` says when the SOURCE's numbers
+-- reached us, and `parse_version` says which attempt at READING them this row is.
+-- If a parser turns out to have been wrong, we re-read the same bronze file with
+-- the fixed parser, keep the original received_at — that really is when the data
+-- arrived — and write the corrected rows as version 2. The wrong rows stay
+-- forever as evidence of what we believed; nothing is updated and nothing is
+-- deleted. A fresh fetch gets a new received_at; a re-read never does.
+-- See docs/QUESTIONS.md Q1, answered 2026-09-11.
+
+
+-- ---------------------------------------------------------------------------
+-- parse_corrections — why a bronze file was ever read a second time.
+-- Append-only, like everything else. One row each time a parser bug is fixed
+-- and the affected files re-read: which file, which version replaced which, and
+-- in plain words what was wrong. Without this, a jump from parse_version 1 to 2
+-- in `observations` is a mystery in six months' time.
+-- ---------------------------------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS parse_corrections_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS parse_corrections (
+    correction_id INTEGER PRIMARY KEY DEFAULT nextval('parse_corrections_id_seq'),
+    feed_id       TEXT NOT NULL,
+    bronze_path   TEXT NOT NULL,   -- the file that was re-read
+    old_version   INTEGER NOT NULL,
+    new_version   INTEGER NOT NULL,
+    reason        TEXT NOT NULL,   -- what the parser got wrong, in plain words
+    corrected_at  TIMESTAMP NOT NULL DEFAULT current_localtimestamp()
 );
 
 
@@ -129,11 +158,22 @@ CREATE TABLE IF NOT EXISTS split_mask (
 -- Views
 -- ---------------------------------------------------------------------------
 
--- observations_latest — the most recent vintage of each (series, period).
--- QUALIFY filters on a window function: keep row 1 after sorting each
--- (feed, series, entity, period) group by received_at descending.
+-- observations_latest — our best current answer for each (series, period).
+-- Two stages, and the order matters:
+--   1. within one vintage, keep the highest parse_version — the latest reading
+--      of that payload, i.e. the corrected one if a parser bug was fixed;
+--   2. across vintages, keep the most recent received_at.
+-- Doing it the other way round could pick a superseded parse of a newer vintage.
+-- QUALIFY filters on a window function: keep row 1 after sorting each group.
 CREATE OR REPLACE VIEW observations_latest AS
-SELECT * FROM observations
+WITH best_parse AS (
+    SELECT * FROM observations
+    QUALIFY row_number() OVER (
+        PARTITION BY feed_id, series_id, entity_id, period_start, received_at
+        ORDER BY parse_version DESC
+    ) = 1
+)
+SELECT * FROM best_parse
 QUALIFY row_number() OVER (
     PARTITION BY feed_id, series_id, entity_id, period_start
     ORDER BY received_at DESC

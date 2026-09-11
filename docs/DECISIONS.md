@@ -308,3 +308,32 @@ because that is what Python does with a dataclass. The redaction filter did not
 help: it covers log lines, and that was a print. A secret that can be leaked by
 the most obvious debugging command in the language will be. Rules out: any
 object holding a key whose default repr shows it.
+
+**2026-09-11 — `parse_version` added to `observations` and to its primary key.**
+Why: the owner's answer to Q1, recorded there in full. A vintage stored wrongly
+could not be corrected without breaking rule 1; now it is corrected by re-reading
+the same bronze file under the same `received_at` with the next `parse_version`,
+so the wrong rows stay as evidence and the repair is itself append-only. The two
+axes stay honest: a new `received_at` means the source said something new, a new
+`parse_version` means we read the same thing better. Rejected on the way:
+`superseded_by` (needs an UPDATE), delete-and-reinsert (destroys the evidence),
+and a fresh `received_at` (dresses our bug up as the source's revision).
+Rules out: any correction path that changes or removes a stored row.
+
+**2026-09-11 — `observations_latest` is two-stage, parse first, vintage second.**
+Why: highest `parse_version` within a vintage, then most recent vintage. The
+other order lets a corrected old vintage outrank an uncorrected newer one, which
+would show the owner a number the source has already superseded. There is a test
+for exactly this. Rules out: a single QUALIFY over both columns at once.
+
+**2026-09-11 — `db/migrations.py`, and `db/init.py` migrates before it creates.**
+Why: `CREATE TABLE IF NOT EXISTS` silently leaves an old table alone, so without
+a migration an existing database would keep the old primary key while the new
+views expect the new column, and the failure would surface somewhere confusing.
+A primary key cannot be altered in place, so the migration renames the table,
+lets `schema.sql` build the new one, copies every row across as
+`parse_version = 1` — true of everything written before today — checks the count
+matches, and only then drops the old table, all in one transaction. Deleting
+`data/` instead was rejected: bronze can rebuild `observations`, but nothing can
+rebuild the owner's hand-written `observation_log` notes. Rules out: schema
+changes that assume a fresh database.
