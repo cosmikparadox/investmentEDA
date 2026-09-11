@@ -195,3 +195,62 @@ saved payload in `tests/fixtures/`, so they need no API key, no network and no
 `data/` directory, and give the same answer on any machine. They found a real
 bug on first run: `parse()` raised on any bronze file outside the repo, which
 `--reparse` accepts by design. Rules out: tests that call a live API.
+
+**2026-09-11 — Gaps are first-class objects, rendered red, never hidden.**
+Why: the value-chain graph will be mostly hand-curated and partly guesswork.
+Rendering only what is known makes beliefs look like facts. Rendering gaps
+explicitly turns the weakness into the product: a map of the owner's actual
+information position. Every gap becomes a research ticket. Rules out: any UI
+that omits edges because they are unknown.
+
+**2026-09-11 — Edge table added to the v1 schema now; graph UI built in v1.**
+Why: the target state (entity → ecosystem graph → isolated value chain → map of
+physical flows) needs an edge table as its foundation. Fixing the schema now
+means v0 does not change. 2D force graph before 3D. Rules out: 3D rendering
+until 2D is shown to be insufficient.
+
+**2026-09-11 — "Real-time" applies to the physical commodity leg only.**
+Why: crude on tankers is trackable live (aisstream, free). Nothing downstream
+of the refinery has a public live feed. The UI must distinguish live-observed
+edges from slow-curated ones. Rules out: presenting the downstream chain as live.
+
+**2026-09-11 — Polling on a timer is the near-real-time compromise.**
+Why: FRED, CME delayed and GDELT change every 10 min to daily; a scheduled pull
+every 10–15 min is indistinguishable from streaming for a slow decision and
+needs no new infrastructure. One isolated live websocket (aisstream) is the only
+true stream in v1. Rules out: Kafka, Flink, or any message queue until there are
+multiple producers and consumers.
+
+**2026-09-11 — Charter, PRD and architecture documents added.**
+Why: the target state is now well enough understood to write down, and the
+build agent needs the destination and the engineering standard to avoid
+painting into corners. These documents describe direction and quality bar;
+they do not expand v0 scope. Rules out: any [v1]+ requirement being built
+in v0 on the grounds that "the PRD mentions it".
+
+**2026-09-11 — `ingest_runs` table added to v0.**
+Why: observability is cheap now and essential the first time a feed silently
+stops. One table, written at run start and end. Rules out: ingestors that
+succeed or fail without a record.
+
+**2026-09-11 — `core/` package with typed errors, redacting logger, single
+HTTP helper.**
+Why: the one place tests patch, the one place keys get redacted, the one place
+timeouts are set. Small enough not to count as a framework. Rules out: raw
+`httpx` calls inside ingestors.
+
+**2026-09-11 — The 11 September document set was merged into the repo, not
+copied over it.**
+Why: the research session's documents were written from the 4 September state of
+the repo, so several of them are older than what is here — `docs/QUESTIONS.md`
+(Q1), `docs/feeds/fred.md` and `docs/feeds/eia.md` (live-call findings) and
+`README.md` (setup steps, keys from the environment) all carry build-session work
+that the incoming copies do not. Overwriting would have deleted findings that
+cost a live API call to learn. So: CHARTER, PRD and ARCHITECTURE are new files
+taken as given; CLAUDE.md, DESIGN.md, SCOPE.md and PARKING_LOT.md are taken whole
+because only the research session had changed them; PLAN.md and DECISIONS.md are
+merged — the newly added Week 1 tasks and the seven entries above sit alongside
+the ticks and entries already here; QUESTIONS.md, README.md and the two feed
+specs are kept as they were. `FIRST_PROMPT_FOR_CLAUDE_CODE.md` is not added: it
+is the bootstrap prompt and says to delete it once setup is done. Rules out:
+treating a document drop as a wholesale replacement of the repo's memory.

@@ -60,7 +60,7 @@ claim, and test it on holdout data. Learn whether it was real.
   counts as success; the process worked.
 - A forecast ledger: every prediction logged with timestamp and probability,
   scored when resolved.
-- Dashboard with a live map layer showing more than one entity type.
+- Dashboard with a live map layer (aisstream Hormuz) and a 2D graph view of the oil-and-gas value chain, three to four hops, with gaps rendered red and each gap logged to QUESTIONS.md.
 
 ## Out of scope until further notice
 

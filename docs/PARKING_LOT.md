@@ -19,7 +19,7 @@ write to QUESTIONS.md.
 - **GIE AGSI+ European gas storage.** v1 feed.
 - **CFTC Commitments of Traders.** v1 feed.
 - **OPEC MOMR (PDF parse).** v1 or v2. First LLM-extraction experiment candidate.
-- **aisstream.io live AIS.** v2. Real-time is not needed for slow decisions.
+- **aisstream.io live AIS.** v1 — the one live feed. Hormuz bounding box, own process, own table.
 - **GDELT news.** v2. Enormous; needs its own design.
 - **Semiconductors: TSMC monthly, Taiwan MOF, Korea 20-day.** v2.
 - **Agriculture: USDA NASS, WASDE, CONAB.** v2.

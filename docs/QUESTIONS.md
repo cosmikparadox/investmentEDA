@@ -36,6 +36,39 @@ the core table and belongs to the design, not to the ingestor. Not urgent: it
 matters the first time a parser is wrong, which has not happened. Until it is
 answered, `--reparse` reports what it skipped rather than pretending to fix it.
 
+**Q2 (2026-09-11, CC) — Does `ingest/fred.py` get retrofitted to the new
+`core/` layout, or does it stay as it is until the second ingestor?**
+
+`docs/ARCHITECTURE.md` arrived today and specifies a `core/` package (paths,
+config, a redacting logger, one HTTP helper with explicit timeouts, typed
+errors), an `ingest/bronze.py`, an `ingest/runs.py` with a `RunResult`
+dataclass, and an `ingest_runs` row written at the start and end of every run.
+
+`ingest/fred.py` was written on 5 September, before any of that existed. It
+works and is tested, but it does not match: it calls `httpx` directly, writes
+bronze itself, raises its own `BadPayload` rather than the typed `FeedError` /
+`ParseError` / `StorageError`, returns a plain tuple rather than a `RunResult`,
+and writes no `ingest_runs` row — the table does not exist yet either.
+
+Three ways forward:
+
+1. **Build `core/` and `ingest_runs` now and move `fred.py` onto them before
+   `eia.py` is written.** One ingestor to change instead of three, and the EIA
+   and PortWatch ingestors get written against the standard the first time.
+   Costs a refactor of working, tested code.
+2. **Build `core/` now, leave `fred.py` alone, write `eia.py` against `core/`.**
+   Nothing working gets touched, but the repo then has two shapes of ingestor at
+   once and the FRED tests keep testing the old one.
+3. **Leave all of it until `eia.py` and `portwatch.py` exist**, then extract from
+   three real cases, which is what CLAUDE.md's rule about abstraction actually
+   says.
+
+CC's lean is option 1, on the grounds that `core/` is not being invented from
+guesses — ARCHITECTURE.md already specifies it, so the three-cases rule is not
+really in play, and doing it now is the cheapest it will ever be. But this
+touches code the owner has already read and understood, so it is the owner's
+call.
+
 ## Resolved
 
 _(none yet)_

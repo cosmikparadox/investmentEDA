@@ -8,6 +8,9 @@ You are pairing, not delegating. The owner runs commands and reads diffs.
 
 The repo is the memory. Nothing decided in a chat counts until it is written here.
 
+- `docs/CHARTER.md` — why this exists, goals, principles, phases. Read once.
+- `docs/PRD.md` — numbered requirements with acceptance criteria. Cite IDs in commits.
+- `docs/ARCHITECTURE.md` — module layout, contracts, error handling, testing. Follow it.
 - `docs/SCOPE.md` — what is in v0, v1, and what is parked. Do not expand it.
 - `docs/DESIGN.md` — the architecture. Follow it. Propose changes in `docs/QUESTIONS.md`.
 - `docs/PLAN.md` — the task list. Work top to bottom. Tick things off.
@@ -46,6 +49,16 @@ Do not build any of the following, even if it seems obviously useful:
 
 If you believe one of these is genuinely needed, write the case in `docs/QUESTIONS.md`
 and stop. Do not proceed on your own judgement.
+
+## Engineering standard
+
+Follow docs/ARCHITECTURE.md exactly: module layout, the ingestor contract and
+its fixed step order, typed errors with context, no bare excepts, one
+transaction per run, bronze before parse, parse as a pure function,
+`ingest_runs` written for every run, structured logging with key redaction,
+`ruff` + `pytest` in `make check`. The PRD and charter describe the destination.
+They do not authorise building v1 features in v0. If a requirement is tagged
+[v1] or later, do not build it now.
 
 ## Stack (fixed for v0)
 

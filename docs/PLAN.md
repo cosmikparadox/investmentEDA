@@ -15,7 +15,9 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [x] Owner: create `data/bronze/` and add `data/` to `.gitignore`.
 - [x] Owner: get a free EIA API key (eia.gov/opendata). Put it in `.env`. Never commit it.
 - [x] Owner: get a free FRED API key (fred.stlouisfed.org). Same.
-- [x] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them.
+- [ ] CC: `core/` package per ARCHITECTURE.md §2: paths, config, logging with key redaction, http with explicit timeouts, typed errors. Unit tests for redaction and config. **Added 2026-09-11 with ARCHITECTURE.md. `ingest/fred.py` predates it and still has its own HTTP call and its own `BadPayload` — see Q2 in QUESTIONS.md.**
+- [~] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, `ingest_runs`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them. `db/units.md`. **Built 2026-09-04 without `ingest_runs` or `db/units.md`; both were added to DESIGN.md on 2026-09-11 and are still to do.**
+- [ ] CC: `ingest/bronze.py` (atomic write, never overwrite) and `ingest/runs.py` (RunResult, start_run, finish_run). **Added 2026-09-11. `ingest/fred.py` has its own bronze writer and returns a plain tuple, not a `RunResult` — see Q2.**
 - [x] CC: `db/make_split.py` — fixed seed, 25% of ISO weeks 2015–2030 marked holdout, writes `db/split_mask.csv`. Commit the CSV. It never changes again.
 - [ ] Owner: migrate anything from `docs/OBSERVATIONS.md` into `observation_log` by hand once the table exists.
 - [x] CC: `db/seed_entities.sql` with the three v0 entities and their aliases.

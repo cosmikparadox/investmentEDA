@@ -97,6 +97,26 @@ CREATE TABLE entity_alias (
 v0 seeds three rows. The point is that the table exists so that feed number four
 maps into it instead of inventing its own naming.
 
+## Silver — `ingest_runs`
+
+```sql
+CREATE TABLE ingest_runs (
+    run_id        INTEGER PRIMARY KEY,
+    feed_id       TEXT NOT NULL,
+    received_at   TIMESTAMP NOT NULL,
+    started_at    TIMESTAMP NOT NULL,
+    finished_at   TIMESTAMP,
+    status        TEXT NOT NULL,      -- 'running' | 'ok' | 'failed'
+    rows_fetched  INTEGER,
+    rows_inserted INTEGER,
+    bronze_path   TEXT,
+    error         TEXT                -- redacted, first 500 chars
+);
+```
+
+Written at the start and end of every ingestor run. The first place to look
+when something is wrong. See ARCHITECTURE.md §5.
+
 ## Silver — `feed_registry`
 
 ```sql
@@ -226,3 +246,44 @@ Recorded so it is not forgotten, not so it is built now:
 - Entity coordinates for many more entities (ports, vessels).
 
 None of these change the v0 schema. That is the test of whether v0 is right.
+
+## v1 addition — the graph and its gaps (recorded now, built in v1)
+
+The owner's target state is an exploration tool: pick a central entity, see its
+ecosystem as a graph, click an edge to isolate the value chain, with a map
+carrying the physical flows. The foundational object for that is an edge table.
+The schema is fixed now so v0 does not need to change when v1 arrives.
+
+```sql
+CREATE TABLE edges (
+    edge_id       INTEGER PRIMARY KEY,
+    from_entity   TEXT NOT NULL REFERENCES entity_registry(entity_id),
+    to_entity     TEXT NOT NULL REFERENCES entity_registry(entity_id),
+    relation      TEXT NOT NULL,     -- 'supplies', 'refines_into', 'ships_via', 'buys_from'
+    status        TEXT NOT NULL,     -- 'observed' | 'inferred' | 'gap'
+    feed_id       TEXT,              -- which feed backs it, if status = observed
+    confidence    TEXT,              -- free text for now: 'strong', 'weak', 'guess'
+    source        TEXT,              -- citation or reasoning, always filled
+    gap_reason    TEXT,              -- if status = gap: why nobody has this
+    gap_status    TEXT,              -- 'open' | 'researching' | 'proxy_found' | 'needs_human_intel'
+    added_on      DATE NOT NULL,
+    updated_on    DATE NOT NULL
+);
+```
+
+Rules:
+- Every edge has a `source`, even a guess. "I think so" is a source; blank is not.
+- `status = 'gap'` is a first-class state, not an absence. Gaps are rendered in
+  the UI, visibly (red), never hidden.
+- A new gap edge automatically becomes an entry in `docs/QUESTIONS.md` for the
+  research session. Research returns one of: a direct feed, a proxy that lets
+  the edge become `inferred`, or nothing — in which case `gap_status` becomes
+  `needs_human_intel` and the edge stays red with the reason attached.
+- Physical commodity legs (field → port → tanker → port) can be `observed` via
+  AIS and customs feeds. Downstream legs (petrochemicals → wafer chemicals →
+  fabs → chips → labs) are expected to be mostly `inferred` or `gap`. The UI
+  must make that difference obvious, not smooth it over.
+- Render in 2D first (force-directed graph, click to isolate a chain). 3D is a
+  rendering decision for later, taken only when 2D is visibly insufficient.
+- Start with oil and gas, three or four hops, hand-curated. Extend toward
+  semiconductors only after the oil-and-gas graph has real observed edges.

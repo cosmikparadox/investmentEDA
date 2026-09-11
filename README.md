@@ -5,6 +5,10 @@ history kept, slow decisions out. No execution, no agents, no models until the
 data layer is proven.
 
 Start with `CLAUDE.md`, then `docs/SCOPE.md`, then `docs/PLAN.md`.
+`docs/CHARTER.md` (why this exists), `docs/PRD.md` (numbered requirements)
+and `docs/ARCHITECTURE.md` (module layout and contracts) are read-once
+background; the three named in the line above are the ones that change
+week to week.
 
 ## Setup
 
