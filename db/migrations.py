@@ -99,6 +99,44 @@ def add_parse_version(conn: duckdb.DuckDBPyConnection, schema_sql: str) -> int:
     return after
 
 
+# Columns whose DEFAULT used to be the machine's local clock. See Q3.
+_LOCAL_CLOCK_DEFAULTS = (
+    ("observation_log", "noted_at"),
+    ("parse_corrections", "corrected_at"),
+)
+
+
+def utc_column_defaults(conn: duckdb.DuckDBPyConnection) -> int:
+    """Point any column still defaulting to local time at UTC instead.
+
+    Returns how many columns were changed; 0 if there was nothing to do.
+
+    `CREATE TABLE IF NOT EXISTS` leaves an existing table exactly as it was,
+    including its defaults — so a database built before 2026-09-11 would go on
+    stamping `noted_at` with the machine's local clock while schema.sql said UTC,
+    and nothing would say which rows were which. Existing rows are left alone, as
+    the Q3 answer says; only what happens from now on is changed.
+    """
+    changed = 0
+    for table, column in _LOCAL_CLOCK_DEFAULTS:
+        if not _table_exists(conn, table):
+            continue
+        current = conn.execute(
+            "SELECT column_default FROM duckdb_columns() "
+            "WHERE table_name = ? AND column_name = ?",
+            [table, column],
+        ).fetchone()
+        if current and current[0] and "UTC" not in current[0]:
+            conn.execute(
+                f"ALTER TABLE {table} ALTER COLUMN {column} "
+                f"SET DEFAULT timezone('UTC', now())"
+            )
+            log.info("%s.%s now defaults to UTC (was local time)", table, column)
+            changed += 1
+    return changed
+
+
 def run_all(conn: duckdb.DuckDBPyConnection, schema_sql: str) -> None:
     """Apply every migration that this database still needs. Safe to re-run."""
     add_parse_version(conn, schema_sql)
+    utc_column_defaults(conn)

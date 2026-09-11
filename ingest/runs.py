@@ -19,6 +19,7 @@ from typing import Literal
 
 import duckdb
 
+from core import clock
 from core.errors import BODY_CHARS, StorageError
 from core.logging import get_logger, redact
 
@@ -72,7 +73,7 @@ def start_run(
             VALUES (?, ?, ?, 'running')
             RETURNING run_id
             """,
-            [feed_id, received_at, datetime.now()],
+            [feed_id, received_at, clock.utc_now()],
         ).fetchone()[0]
     except duckdb.Error as exc:
         raise StorageError(
@@ -106,7 +107,7 @@ def finish_run(
         raise ValueError(f"status must be 'ok' or 'failed', not {status!r}")
 
     trimmed = redact(error)[:BODY_CHARS] if error else None
-    finished_at = datetime.now()
+    finished_at = clock.utc_now()
 
     # An UPDATE, and the only one in the ingest path. It fills in how a run this
     # same call opened turned out; it does not change anything a source told us.

@@ -9,6 +9,20 @@
 --   "vintage"    = one particular received_at. A revised value is a new vintage,
 --     a new row, sitting alongside the old one. We never overwrite.
 --   "view"       = a saved query that behaves like a table. It stores no data.
+--
+-- TIME ZONES — read this before writing any query that compares timestamps.
+--   Every TIMESTAMP column in this database is UTC. They are stored "naive",
+--   meaning the value carries no time zone marker: the convention is written
+--   down here rather than in the column type, and applied everywhere. Code gets
+--   the current time from core.clock.utc_now() and nowhere else.
+--   The one exception is history. Rows written before 2026-09-11 were stamped
+--   with the machine's local clock, which was British Summer Time (UTC+1). They
+--   are an hour ahead of the convention and were deliberately left alone —
+--   received_at is part of the primary key and of every bronze filename, so
+--   rewriting them would mean a second migration touching files on disk to
+--   correct a one-hour offset on daily and weekly data. docs/DECISIONS.md
+--   records the exact run after which received_at is UTC, for anyone who ever
+--   needs to subtract that hour.
 
 
 -- ---------------------------------------------------------------------------
@@ -118,7 +132,7 @@ CREATE TABLE IF NOT EXISTS parse_corrections (
     old_version   INTEGER NOT NULL,
     new_version   INTEGER NOT NULL,
     reason        TEXT NOT NULL,   -- what the parser got wrong, in plain words
-    corrected_at  TIMESTAMP NOT NULL DEFAULT current_localtimestamp()
+    corrected_at  TIMESTAMP NOT NULL DEFAULT timezone('UTC', now())
 );
 
 
@@ -132,7 +146,7 @@ CREATE SEQUENCE IF NOT EXISTS observation_log_id_seq START 1;
 
 CREATE TABLE IF NOT EXISTS observation_log (
     obs_id        INTEGER PRIMARY KEY DEFAULT nextval('observation_log_id_seq'),
-    noted_at      TIMESTAMP NOT NULL DEFAULT current_localtimestamp(),  -- immutable
+    noted_at      TIMESTAMP NOT NULL DEFAULT timezone('UTC', now()),  -- immutable, UTC
     note          TEXT NOT NULL,       -- free text, the owner's words
     series_ids    TEXT[],              -- which series were on screen
     window_start  DATE,                -- what date range was being looked at

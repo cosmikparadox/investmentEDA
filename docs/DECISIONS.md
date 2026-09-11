@@ -337,3 +337,63 @@ matches, and only then drops the old table, all in one transaction. Deleting
 `data/` instead was rejected: bronze can rebuild `observations`, but nothing can
 rebuild the owner's hand-written `observation_log` notes. Rules out: schema
 changes that assume a fresh database.
+
+**2026-09-11 — Every TIMESTAMP in the database is UTC, stored naive, from
+`core.clock.utc_now()`.**
+Why: the owner's answer to Q3, which reverses the 2026-09-04 decision to use
+`current_localtimestamp()` and local `datetime.now()`. That entry's reasoning
+was "fine for a single-machine, single-owner v0, revisit if it ever runs
+somewhere else" — and it already does, since this repo is worked on from a cloud
+session whose clock is UTC while the owner's laptop is on London time. Two
+machines writing `received_at` in two zones, into a primary key, would make "what
+did we know on 5 September" unanswerable. Naive rather than DuckDB's aware type
+because mixing the two makes every comparison a question about which is which;
+one convention applied everywhere is easier to keep true, and it is written at
+the top of `schema.sql` where anyone writing a query will meet it. Rules out:
+`datetime.now()`, `current_localtimestamp()`, and any timestamp not obtained
+from `core.clock`.
+
+**2026-09-11 — The UTC cutover, recorded so the old rows can be corrected later
+if anyone cares.**
+Per the Q3 answer, rows written before this change were left as they are. What
+is known about them, exactly:
+
+- **`observations`** — every row whose `received_at` predates the first run of
+  the migrated `ingest/fred.py` was stamped with the machine's local clock. That
+  machine was on British Summer Time, UTC+1, for all of them (BST ran from
+  2026-03-29 to 2026-10-25, and the rows date from 4–5 September). To compare
+  one of those timestamps with a UTC one, subtract one hour. The same applies to
+  the `received_at` in their bronze filenames, which were written from the same
+  value.
+- **`ingest_runs`** — UTC from `run_id` 1 onwards. The table was created today
+  and nothing had written to it before `ingest/runs.py` moved onto
+  `core.clock`, so there is no mixed history to disentangle.
+- **The exact cutover** — the first run of the migrated ingestor is the boundary,
+  and it has not happened yet, because migrating `ingest/fred.py` is the owner's
+  task under Q2. When it does: record its `run_id` and `started_at` here, in an
+  entry underneath this one. PLAN.md carries that as a line so it is not
+  forgotten. Until then the boundary is simply "everything currently in
+  `observations` is BST".
+
+No attempt was made to rewrite the old rows: `received_at` is in the primary key
+and in every bronze filename, so correcting a one-hour offset on daily and weekly
+data would mean a second migration touching files on disk. The offset is
+recorded instead, which costs nothing and loses nothing.
+
+**2026-09-11 — `core/clock.py`, a module ARCHITECTURE.md §2 does not list.**
+Why: the Q3 answer names `core.clock.utc_now()` as the single source of the
+current time, so that every timestamp has one origin and tests can freeze it in
+one place. It is four lines of code and it belongs beside the other shared
+plumbing. ARCHITECTURE.md's module list is from 11 September and predates the
+answer; this is an addition to it, not a departure from it. Rules out: a call to
+`datetime.now()` anywhere outside this module.
+
+**2026-09-11 — `ingest/bronze.py` written by CC; the owner migrates onto it.**
+Why: the owner's answer to Q4. It takes bytes rather than text or a dict, because
+anything else has already been interpreted — bronze is supposed to be what the
+source actually sent. It writes to a temporary file in the same folder and
+renames it into place, so a crash leaves either no file or a complete one, never
+a truncated file that later looks like evidence. It refuses to overwrite an
+existing path, which is rule 1 at its most literal. Rules out: an ingestor
+writing a bronze file with `path.write_bytes()`, which can be interrupted
+halfway and can silently replace a file already there.

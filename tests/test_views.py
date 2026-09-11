@@ -241,3 +241,40 @@ def test_migration_does_nothing_to_a_brand_new_database():
     conn = duckdb.connect(":memory:")
     assert migrations.add_parse_version(conn, SCHEMA) == 0
     conn.close()
+
+
+def test_timestamp_defaults_are_utc(conn, monkeypatch):
+    """A note's noted_at must not come from the machine's local clock. Q3.
+
+    The session is put on London time first, so that local and UTC genuinely
+    differ — in a container they are usually the same and the test would pass
+    without proving anything.
+    """
+    conn.execute("SET TimeZone='Europe/London'")
+    conn.execute("INSERT INTO observation_log (note) VALUES ('brent drifted up')")
+
+    noted_at, local_now, utc_now = conn.execute(
+        "SELECT (SELECT noted_at FROM observation_log), "
+        "current_localtimestamp(), timezone('UTC', now())"
+    ).fetchone()
+    assert abs((noted_at - utc_now).total_seconds()) < 5
+    assert noted_at != local_now  # BST in September: an hour apart
+
+
+def test_the_utc_default_migration_fixes_an_older_database():
+    """An existing table keeps its old default until something changes it."""
+    conn = duckdb.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE observation_log (obs_id INTEGER, note TEXT, "
+        "noted_at TIMESTAMP NOT NULL DEFAULT current_localtimestamp())"
+    )
+    assert migrations.utc_column_defaults(conn) == 1
+    assert migrations.utc_column_defaults(conn) == 0  # safe to run twice
+
+    conn.execute("SET TimeZone='Europe/London'")
+    conn.execute("INSERT INTO observation_log (obs_id, note) VALUES (1, 'x')")
+    noted_at, utc_now = conn.execute(
+        "SELECT (SELECT noted_at FROM observation_log), timezone('UTC', now())"
+    ).fetchone()
+    assert abs((noted_at - utc_now).total_seconds()) < 5
+    conn.close()

@@ -6,43 +6,7 @@ part of the record.
 
 ## Open
 
-**Q3 (2026-09-11, CC) — UTC or local time? The PRD and the database disagree.**
-
-PRD NFR-12 says "all timestamps UTC; no naive datetimes in the database". The
-database does the opposite: the 2026-09-04 decision put `current_localtimestamp()`
-on `observation_log.noted_at` and `ingest/fred.py` stamps `received_at` with
-`datetime.now()`, both naive local time. `ingest/runs.py` has just been written
-to match the database rather than the PRD, on the grounds that two tables
-disagreeing about what a timestamp means is worse than either choice on its own,
-and that a comparison between `ingest_runs.received_at` and
-`observations.received_at` has to be meaningful.
-
-This is cheap to fix now and expensive later: every stored vintage is a
-timestamp, and mixing zones silently shifts "what did we know on 5 September" by
-up to a day. Three options: leave it and amend NFR-12 to say local; switch new
-code to UTC and accept two conventions in one database; or switch everything to
-UTC and re-parse the existing bronze files under UTC `received_at` values, which
-Q1's `parse_version` mechanism now makes possible without losing anything.
-
-CC's lean is the third, but it is a change to what every existing row means, so
-it is the owner's call. Not urgent while the machine stays in one time zone;
-urgent the first time it does not, or the first time the clocks change.
-
-**Q4 (2026-09-11, CC) — Is `ingest/bronze.py` still wanted, and who writes it?**
-
-The Q2 answer commissioned "`core/` and `ingest/runs.py`" by name, and its
-reasoning calls `ingest/bronze.py` borderline but justified; the CLAUDE.md
-amendment lists it as required plumbing. It has not been written, because
-`ingest/fred.py` already has a working `write_bronze()`/`read_bronze()` pair and
-extracting them is part of moving that file — which is the owner's job under the
-same answer.
-
-Suggestion: the owner lifts those two functions out of `fred.py` into
-`ingest/bronze.py` as part of the migration, adding the two things the
-ARCHITECTURE.md §3.3 contract asks for that the current code does not do — write
-to a temp file and rename (so a crash cannot leave half a file), and raise
-`StorageError` rather than overwrite if the path already exists. CC reviews.
-Alternative: CC writes it first so the owner has it to migrate onto.
+_(none — Q1 to Q4 all answered on 2026-09-11)_
 
 ## Resolved
 
@@ -171,3 +135,78 @@ config, http), the `ingest_runs` table, and `ingest/runs.py` with `RunResult`,
 bullet amended as instructed. Left for the owner: moving `ingest/fred.py` onto
 them. `ingest/bronze.py` is not written — see Q4.
 
+**Q3 (2026-09-11, CC) — UTC or local time? The PRD and the database disagree.**
+
+PRD NFR-12 says "all timestamps UTC; no naive datetimes in the database". The
+database does the opposite: the 2026-09-04 decision put `current_localtimestamp()`
+on `observation_log.noted_at` and `ingest/fred.py` stamps `received_at` with
+`datetime.now()`, both naive local time. `ingest/runs.py` has just been written
+to match the database rather than the PRD, on the grounds that two tables
+disagreeing about what a timestamp means is worse than either choice on its own,
+and that a comparison between `ingest_runs.received_at` and
+`observations.received_at` has to be meaningful.
+
+This is cheap to fix now and expensive later: every stored vintage is a
+timestamp, and mixing zones silently shifts "what did we know on 5 September" by
+up to a day. Three options: leave it and amend NFR-12 to say local; switch new
+code to UTC and accept two conventions in one database; or switch everything to
+UTC and re-parse the existing bronze files under UTC `received_at` values, which
+Q1's `parse_version` mechanism now makes possible without losing anything.
+
+CC's lean is the third, but it is a change to what every existing row means, so
+it is the owner's call. Not urgent while the machine stays in one time zone;
+urgent the first time it does not, or the first time the clocks change.
+
+**Answered 2026-09-11 by the owner: UTC by convention, stored naive; leave the
+old rows where they are.**
+
+> All TIMESTAMP columns are UTC by convention, stored naive. Code produces
+> timestamps with `datetime.now(timezone.utc)` and strips tzinfo at the database
+> boundary. No timezone-aware column types. Document this at the top of
+> `schema.sql`.
+>
+> Existing rows: leave them. They are BST (UTC+1) and `received_at` is part of
+> the primary key and of every bronze filename, so rewriting them is a second
+> migration touching files on disk for a one-hour offset on daily and weekly
+> data. Not worth it. Record in DECISIONS.md the exact cutover run_id and
+> timestamp after which `received_at` is UTC, so a future as-of query can
+> subtract an hour from the older rows if anyone ever cares.
+>
+> `runs.py`, `bronze.py`, and every ingestor use `core.clock.utc_now()` — one
+> function, one place tests can freeze.
+
+Done by CC on 2026-09-11: `core/clock.py` with `utc_now()` and `to_utc_naive()`,
+`ingest/runs.py` moved onto it, the convention written at the top of
+`db/schema.sql`, 6 tests including a frozen-clock assertion on `ingest_runs`.
+The cutover is recorded in DECISIONS.md; its `observations` half can only be
+filled in when the migrated `ingest/fred.py` first runs, and that is now a line
+in PLAN.md.
+
+**Q4 (2026-09-11, CC) — Is `ingest/bronze.py` still wanted, and who writes it?**
+
+The Q2 answer commissioned "`core/` and `ingest/runs.py`" by name, and its
+reasoning calls `ingest/bronze.py` borderline but justified; the CLAUDE.md
+amendment lists it as required plumbing. It has not been written, because
+`ingest/fred.py` already has a working `write_bronze()`/`read_bronze()` pair and
+extracting them is part of moving that file — which is the owner's job under the
+same answer.
+
+Suggestion: the owner lifts those two functions out of `fred.py` into
+`ingest/bronze.py` as part of the migration, adding the two things the
+ARCHITECTURE.md §3.3 contract asks for that the current code does not do — write
+to a temp file and rename (so a crash cannot leave half a file), and raise
+`StorageError` rather than overwrite if the path already exists. CC reviews.
+Alternative: CC writes it first so the owner has it to migrate onto.
+
+**Answered 2026-09-11 by the owner: CC writes it; the owner migrates onto it.**
+
+> Claude Code writes `ingest/bronze.py` first, per the ARCHITECTURE.md contract:
+> takes bytes, writes to a temp file, atomic rename, raises `StorageError` if the
+> path exists. Same reasoning as Q2: it enforces rule 1, so it is shared
+> plumbing, not an abstraction extracted from feeds. The owner then migrates
+> `fred.py` onto `core/`, `runs.py` AND `bronze.py` in one pass. The owner learns
+> by using the plumbing, not by writing it.
+
+Done by CC on 2026-09-11: `write_bronze(feed_id, received_at, payload: bytes)`
+and `read_bronze(path) -> bytes`, 9 tests. Bytes rather than text or a dict,
+because anything else is already an interpretation of what the source sent.

@@ -12,7 +12,7 @@ from datetime import datetime
 import duckdb
 import pytest
 
-from core import logging as clog, paths
+from core import clock, logging as clog, paths
 from core.errors import StorageError
 from ingest.runs import RunResult, finish_run, start_run
 
@@ -123,6 +123,20 @@ def test_a_long_error_is_trimmed_to_500_characters(conn):
     run_id = start_run(conn, "fred_brent_ovx", RECEIVED_AT)
     finish_run(conn, run_id, "failed", error="x" * 5000)
     assert len(rows(conn)[0][6]) == 500
+
+
+def test_run_times_are_utc_from_the_one_clock(conn, monkeypatch):
+    """Not the machine's local time. See docs/QUESTIONS.md Q3."""
+    frozen = datetime(2026, 9, 11, 9, 0, 0)
+    monkeypatch.setattr(clock, "utc_now", lambda: frozen)
+
+    run_id = start_run(conn, "fred_brent_ovx", RECEIVED_AT)
+    finish_run(conn, run_id, "ok")
+
+    started_at, finished_at = conn.execute(
+        "SELECT started_at, finished_at FROM ingest_runs WHERE run_id = ?", [run_id]
+    ).fetchone()
+    assert started_at == frozen and finished_at == frozen
 
 
 def test_starting_a_run_without_a_schema_says_so():
