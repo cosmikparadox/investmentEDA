@@ -254,3 +254,57 @@ the ticks and entries already here; QUESTIONS.md, README.md and the two feed
 specs are kept as they were. `FIRST_PROMPT_FOR_CLAUDE_CODE.md` is not added: it
 is the bootstrap prompt and says to delete it once setup is done. Rules out:
 treating a document drop as a wholesale replacement of the repo's memory.
+
+**2026-09-11 — `core/` and `ingest/runs.py` built now; the owner migrates
+`ingest/fred.py` onto them.**
+Why: the owner's answer to Q2, recorded there in full. The short version: the
+three-cases rule is about the shape of an ingestor, not about config loading,
+logging, HTTP timeouts and error types, which any project has whether it holds
+one feed or fifty. Shared functions yes, shared shape no — CLAUDE.md's first
+forbidden bullet was amended to say exactly that. Rules out: a second ingestor
+written against raw `httpx` and its own exception type.
+
+**2026-09-11 — A missing API key is reported when a feed needs it, not when
+`core.config` is imported.**
+Why: ARCHITECTURE.md §6 says missing keys raise at import time. Taken literally
+that breaks the things that are supposed to work without keys — `db/init.py`,
+the dashboard, and every test — because importing anything that imports config
+would fail on a machine with no `.env`. So `.env` is still read once at import,
+but the raise happens in `api_key("FRED_API_KEY")`, at the moment a feed
+actually reaches for it, and the message names the key and the URL to register
+for one. Rules out: a config module that cannot be imported without secrets.
+
+**2026-09-11 — `core.http` exposes `get()` returning text as well as
+`get_json()`.**
+Why: ARCHITECTURE.md §3.1 specifies `get_json`, but bronze stores the response
+body verbatim (2026-09-05), and a function that parses JSON and throws the text
+away cannot serve that. `get()` returns status, text and a key-redacted URL;
+`get_json()` is `get()` plus `json.loads`. Both set the same timeouts and raise
+the same `FeedError`. Rules out: an ingestor re-serialising JSON on its way into
+a bronze file to work around the helper.
+
+**2026-09-11 — A fourth error class, `ConfigError`.**
+Why: ARCHITECTURE.md §4 names three. A missing key is not a feed failure, a
+parse failure or a storage failure — it is the system being unconfigured, and
+before any feed is involved. It is a `ControlroomError` like the rest, so
+anything catching that catches this too. Rules out: `SystemExit` raised from
+library code, which is what `ingest/fred.py` does today and which cannot be
+caught by a caller that wants to record the failure.
+
+**2026-09-11 — `ingest_runs` rows are updated once, by the run that wrote them.**
+Why: ARCHITECTURE.md §5 says the row is written at start and end, which means
+the end has to fill in the row the start created. That is an UPDATE, and rule 1
+says no UPDATEs — but rule 1 is about never overwriting what a source told us.
+`ingest_runs` is a logbook of our own attempts, not data from a source. The
+UPDATE is narrow by construction: it only matches a row still marked 'running',
+so finishing a run twice is an error rather than a silent rewrite, and a process
+killed mid-run leaves its row saying 'running' for ever, which is the signal you
+want. Rules out: a second `ingest_runs` row per run, which would make "how many
+times did this feed run" a question about de-duplication.
+
+**2026-09-11 — `Settings.__repr__` prints "set"/"missing", never a key.**
+Why: writing this module, `print(settings)` put both live API keys on screen,
+because that is what Python does with a dataclass. The redaction filter did not
+help: it covers log lines, and that was a print. A secret that can be leaked by
+the most obvious debugging command in the language will be. Rules out: any
+object holding a key whose default repr shows it.

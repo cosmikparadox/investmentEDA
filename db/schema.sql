@@ -12,6 +12,31 @@
 
 
 -- ---------------------------------------------------------------------------
+-- ingest_runs — the operational history. One row per attempt to fetch a feed,
+-- written when the run starts and completed when it ends.
+-- The first place to look when something is wrong: it says what ran, when, how
+-- long it took, how many rows it added, and the error text if it failed.
+-- Unlike `observations`, a run row IS updated — once, by its own run, to fill in
+-- how it ended. Rule 1 is about never overwriting ingested data; this table is a
+-- logbook of attempts, not data from a source.
+-- ---------------------------------------------------------------------------
+CREATE SEQUENCE IF NOT EXISTS ingest_runs_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS ingest_runs (
+    run_id        INTEGER PRIMARY KEY DEFAULT nextval('ingest_runs_id_seq'),
+    feed_id       TEXT NOT NULL,
+    received_at   TIMESTAMP NOT NULL,  -- the vintage this run was writing
+    started_at    TIMESTAMP NOT NULL,
+    finished_at   TIMESTAMP,           -- NULL while the run is still going
+    status        TEXT NOT NULL,       -- 'running' | 'ok' | 'failed'
+    rows_fetched  INTEGER,
+    rows_inserted INTEGER,             -- after skipping rows already present
+    bronze_path   TEXT,
+    error         TEXT                 -- redacted, first 500 characters
+);
+
+
+-- ---------------------------------------------------------------------------
 -- feed_registry — one row per ingestor. What it is and where it really comes from.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS feed_registry (

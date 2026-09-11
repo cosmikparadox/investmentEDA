@@ -38,8 +38,12 @@ The repo is the memory. Nothing decided in a chat counts until it is written her
 
 Do not build any of the following, even if it seems obviously useful:
 
-- Abstract base classes, plugin registries, or a "framework" for feed adaptors.
-  Each ingestor is a plain Python function. Duplication is fine at this stage.
+- Abstract base classes, plugin registries, or a generic "feed adaptor"
+  framework. Each ingestor is a plain module with one run() function.
+  Shared plumbing in core/ (config, logging, http, errors) and in
+  ingest/bronze.py + ingest/runs.py is required, not forbidden — see
+  ARCHITECTURE.md §2–3. The line is: shared FUNCTIONS yes, shared
+  SHAPE no.
 - Configuration systems beyond a single `.env` file.
 - Any scheduler beyond a `Makefile` target run by hand. Prefect/Dagster is v1.
 - Any model, forecast, backtest, signal, or agent. v0 is data in, data visible.

@@ -6,6 +6,44 @@ part of the record.
 
 ## Open
 
+**Q3 (2026-09-11, CC) — UTC or local time? The PRD and the database disagree.**
+
+PRD NFR-12 says "all timestamps UTC; no naive datetimes in the database". The
+database does the opposite: the 2026-09-04 decision put `current_localtimestamp()`
+on `observation_log.noted_at` and `ingest/fred.py` stamps `received_at` with
+`datetime.now()`, both naive local time. `ingest/runs.py` has just been written
+to match the database rather than the PRD, on the grounds that two tables
+disagreeing about what a timestamp means is worse than either choice on its own,
+and that a comparison between `ingest_runs.received_at` and
+`observations.received_at` has to be meaningful.
+
+This is cheap to fix now and expensive later: every stored vintage is a
+timestamp, and mixing zones silently shifts "what did we know on 5 September" by
+up to a day. Three options: leave it and amend NFR-12 to say local; switch new
+code to UTC and accept two conventions in one database; or switch everything to
+UTC and re-parse the existing bronze files under UTC `received_at` values, which
+Q1's `parse_version` mechanism now makes possible without losing anything.
+
+CC's lean is the third, but it is a change to what every existing row means, so
+it is the owner's call. Not urgent while the machine stays in one time zone;
+urgent the first time it does not, or the first time the clocks change.
+
+**Q4 (2026-09-11, CC) — Is `ingest/bronze.py` still wanted, and who writes it?**
+
+The Q2 answer commissioned "`core/` and `ingest/runs.py`" by name, and its
+reasoning calls `ingest/bronze.py` borderline but justified; the CLAUDE.md
+amendment lists it as required plumbing. It has not been written, because
+`ingest/fred.py` already has a working `write_bronze()`/`read_bronze()` pair and
+extracting them is part of moving that file — which is the owner's job under the
+same answer.
+
+Suggestion: the owner lifts those two functions out of `fred.py` into
+`ingest/bronze.py` as part of the migration, adding the two things the
+ARCHITECTURE.md §3.3 contract asks for that the current code does not do — write
+to a temp file and rename (so a crash cannot leave half a file), and raise
+`StorageError` rather than overwrite if the path already exists. CC reviews.
+Alternative: CC writes it first so the owner has it to migrate onto.
+
 **Q1 (2026-09-05, CC) — How do we repair a vintage that was stored wrongly?**
 
 Bronze now has a working read path: `ingest/fred.py --reparse FILE` re-reads a
@@ -35,6 +73,8 @@ CC's lean is option 2 — it keeps rule 1 literally true — but this is a chang
 the core table and belongs to the design, not to the ingestor. Not urgent: it
 matters the first time a parser is wrong, which has not happened. Until it is
 answered, `--reparse` reports what it skipped rather than pretending to fix it.
+
+## Resolved
 
 **Q2 (2026-09-11, CC) — Does `ingest/fred.py` get retrofitted to the new
 `core/` layout, or does it stay as it is until the second ingestor?**
@@ -69,6 +109,27 @@ really in play, and doing it now is the cheapest it will ever be. But this
 touches code the owner has already read and understood, so it is the owner's
 call.
 
-## Resolved
+**Answered 2026-09-11 by the owner: option 1, with the migration split.**
 
-_(none yet)_
+> The three-cases rule in CLAUDE.md is about abstracting the SHAPE of an
+> ingestor — base classes, plugin registries, generic adaptors. `core/` is not
+> that. Config loading, a redacting logger, one HTTP helper with timeouts, and
+> typed errors would exist in any project with one feed or fifty; they are
+> shared plumbing, not an abstraction extracted from feeds. `ingest/bronze.py`
+> and `ingest/runs.py` are borderline, but they exist to enforce two of the four
+> unbreakable rules (bronze-before-parse, every run recorded), and rules enforced
+> by shared code are stronger than rules enforced by each ingestor remembering.
+> One ingestor migrating now costs an hour. Three migrating later costs a day and
+> produces two shapes of ingestor in the meantime, which is the worst outcome.
+>
+> The owner migrates `fred.py`, not Claude Code. Owner wrote it; owner moves it.
+> Claude Code reviews the diff and explains anything non-obvious. Keep the
+> existing test passing throughout; add the idempotency assertion on
+> `ingest_runs` (exactly one row per run, status ok).
+
+Done by CC on 2026-09-11: `core/` (paths, errors, logging with redaction,
+config, http), the `ingest_runs` table, and `ingest/runs.py` with `RunResult`,
+`start_run()` and `finish_run()`. 30 new tests. CLAUDE.md's first forbidden
+bullet amended as instructed. Left for the owner: moving `ingest/fred.py` onto
+them. `ingest/bronze.py` is not written — see Q4.
+

@@ -74,6 +74,7 @@ def main() -> None:
         feeds = conn.execute("SELECT count(*) FROM feed_registry").fetchone()[0]
         observations = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
         notes = conn.execute("SELECT count(*) FROM observation_log").fetchone()[0]
+        runs = conn.execute("SELECT count(*) FROM ingest_runs").fetchone()[0]
     finally:
         conn.close()
 
@@ -83,6 +84,7 @@ def main() -> None:
     print(f"  feed_registry    {feeds:>6} feeds")
     print(f"  observations     {observations:>6} rows")
     print(f"  observation_log  {notes:>6} notes")
+    print(f"  ingest_runs      {runs:>6} runs")
 
 
 if __name__ == "__main__":
