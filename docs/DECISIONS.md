@@ -397,3 +397,21 @@ a truncated file that later looks like evidence. It refuses to overwrite an
 existing path, which is rule 1 at its most literal. Rules out: an ingestor
 writing a bronze file with `path.write_bytes()`, which can be interrupted
 halfway and can silently replace a file already there.
+
+**2026-09-12 — `.env` beats a variable already set in the environment.**
+Why: reverses the 2026-09-04 entry, which had it the other way round. After the
+FRED key was rotated, `.env` held the new key and this session's environment
+still held the old one — and the old one won, so the code would have sent a dead
+key and got a 401 that said nothing about why. Editing `.env` is the obvious
+thing to do when a key changes, so it should be the thing that takes effect.
+`load_dotenv(..., override=True)` in `core/config.py` and in `ingest/fred.py`.
+Rules out: silently preferring a stale value because it was set first.
+
+**2026-09-12 — The redaction filter formats a log record before redacting it.**
+Why: it was only redacting `record.msg`, and a library that logs `"GET %s"` with
+the URL as an argument keeps the key in `record.args`, untouched. httpx does
+exactly that, and printed a live API key in full the first time a real request
+went through the configured logger. `getMessage()` applies the arguments first;
+the result is redacted and the args cleared. There is a test with a key passed
+as a log argument. Rules out: a redaction filter that only covers the cases
+where the whole message was built before logging.

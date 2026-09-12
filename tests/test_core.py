@@ -215,3 +215,18 @@ def test_errors_redact_secrets_that_reach_them():
     clog.register_secret(FAKE_KEY)
     error = FeedError("f", "boom", url=f"https://x.test?api_key={FAKE_KEY}")
     assert FAKE_KEY not in str(error)
+
+
+def test_a_secret_in_a_log_argument_is_redacted_too(caplog):
+    """The leak this filter missed once: httpx logs the URL as an argument.
+
+    `log.info("GET %s", url)` keeps the URL in record.args, so redacting only
+    record.msg leaves the key in the output. It has to be formatted first.
+    """
+    clog.register_secret(FAKE_KEY)
+    log = clog.get_logger("tests.demo")
+    with caplog.at_level("INFO"):
+        log.info("GET %s", f"https://x.test/series?api_key={FAKE_KEY}")
+    line = caplog.records[-1].getMessage()
+    assert FAKE_KEY not in line
+    assert "***" in line

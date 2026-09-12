@@ -60,7 +60,11 @@ class Settings:
 
 def _load() -> Settings:
     """Read .env (if present) and the environment, and register the keys as secrets."""
-    load_dotenv(paths.REPO_ROOT / ".env")  # does nothing if the file is absent
+    # override=True: .env beats a variable already set in the environment.
+    # The other way round means a stale key in a cloud session's settings
+    # silently wins over the one you just put in .env, and the 401 that follows
+    # does not tell you that is what happened.
+    load_dotenv(paths.REPO_ROOT / ".env", override=True)  # no-op if absent
 
     loaded = Settings(
         eia_api_key=os.environ.get("EIA_API_KEY") or None,

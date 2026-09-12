@@ -79,7 +79,7 @@ def fetch(observation_start: str, received_at: datetime) -> dict:
     The API key is deliberately NOT recorded. Bronze files are data, and a
     secret in a data file is a secret you will forget you wrote down.
     """
-    load_dotenv(REPO_ROOT / ".env")  # a real environment variable wins over .env
+    load_dotenv(REPO_ROOT / ".env", override=True)  # .env wins over the environment
     try:
         api_key = os.environ["FRED_API_KEY"]
     except KeyError:

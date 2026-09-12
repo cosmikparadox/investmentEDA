@@ -54,7 +54,13 @@ class _RedactingFilter(logging.Filter):
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(str(record.msg))
+        # getMessage() applies the %s arguments first. Redacting record.msg on
+        # its own is not enough: a library that logs "GET %s" with the URL as an
+        # argument would have the key in record.args, untouched. httpx does
+        # exactly that. Format first, redact the result, then clear the args so
+        # nothing formats it a second time.
+        record.msg = redact(record.getMessage())
+        record.args = ()
         if not hasattr(record, "feed"):
             record.feed = "-"
         return True  # True means "keep this record"
