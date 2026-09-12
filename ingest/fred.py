@@ -8,37 +8,48 @@ take two daily series from it:
     OVXCLS        the CBOE crude oil volatility index, a number with no unit
                   that goes up when traders expect the oil price to swing about
 
-It does five things, in this order, and the order matters:
+One run does these things, in this order, and the order is fixed by
+ARCHITECTURE.md §3.1 — it is not a style choice:
 
-    1. asks FRED for both series
-    2. writes FRED's reply to a file under data/bronze/ BEFORE reading it, byte
-       for byte, so a bug in step 4 cannot lose the data
-    3. checks the reply looks like what we asked for
-    4. turns it into rows
-    5. adds the rows, skipping any already there
+    1. open a run in `ingest_runs`, so an attempt that dies leaves evidence
+    2. ask FRED for both series
+    3. write FRED's reply to data/bronze/ BEFORE reading it, byte for byte, so
+       a bug in step 5 cannot lose the data
+    4. check the reply is the shape we expect
+    5. turn it into rows — a pure function, no clock and no database
+    6. insert them in one transaction, skipping any already there
+    7. close the run, recording what happened
 
-Two ways to run it:
+Three ways to run it:
 
-    uv run python -m ingest.fred                    fetch from FRED and store
-    uv run python -m ingest.fred --reparse FILE     re-read a bronze file instead
+    uv run python -m ingest.fred                     fetch from FRED and store
+    uv run python -m ingest.fred --reparse FILE --reason "..."
+                                                     re-read a file we already have
+    uv run python -m ingest.fred --start 2020-01-01  ask for a different window
 
-The second one is the whole reason bronze exists: if the parsing turns out to be
-wrong, you fix it and re-read the files you already have, without going back to
-FRED and without needing them to still be serving that data.
+The second one is the whole reason bronze exists. If the parsing turns out to
+have been wrong, you fix it and re-read the files already on disk — no second
+request to FRED, and no need for them to still be serving that history. The
+re-read keeps the file's original `received_at`, because that really is when the
+data arrived, and stores the corrected rows under the next `parse_version`. The
+wrong rows stay exactly where they are, as evidence of what we believed. See
+docs/QUESTIONS.md Q1.
 """
 
 import argparse
 import json
-import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
-import httpx
-from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = REPO_ROOT / "data" / "controlroom.duckdb"
+from core import clock, paths
+from core.config import api_key, settings
+from core.errors import ControlroomError, ParseError, StorageError
+from core.http import get
+from core.logging import get_logger
+from ingest.bronze import read_bronze, write_bronze
+from ingest.runs import RunResult, finish_run, start_run
 
 FEED_ID = "fred_brent_ovx"
 ENDPOINT = "https://api.stlouisfed.org/fred/series/observations"
@@ -63,51 +74,43 @@ DEFAULT_START = "2015-01-01"
 # number, so a reader can always tell what it is holding.
 ENVELOPE_VERSION = 1
 
-
-class BadPayload(Exception):
-    """FRED sent something we did not expect. Stop before storing it."""
+log = get_logger(__name__, FEED_ID)
 
 
-def fetch(observation_start: str, received_at: datetime) -> dict:
+def fetch(observation_start: str, received_at: datetime) -> bytes:
     """Ask FRED for each series and wrap the replies, verbatim, in an envelope.
 
-    The envelope is what gets written to bronze. It holds each reply as the exact
-    text FRED sent — not re-formatted, not re-ordered — plus enough context to
-    understand the file on its own in two years: when we asked, what we asked
-    for, and what came back.
+    Returns the bytes to write to bronze. The envelope holds each reply as the
+    exact text FRED sent — not re-formatted, not re-ordered — plus enough
+    context to understand the file on its own in two years: when we asked, what
+    we asked for, and what came back.
 
     The API key is deliberately NOT recorded. Bronze files are data, and a
     secret in a data file is a secret you will forget you wrote down.
+
+    Raises FeedError (via core.http) if FRED cannot be reached or refuses us.
     """
-    load_dotenv(REPO_ROOT / ".env", override=True)  # .env wins over the environment
-    try:
-        api_key = os.environ["FRED_API_KEY"]
-    except KeyError:
-        raise SystemExit(
-            "FRED_API_KEY is not set. Put it in .env (see .env.example), or in "
-            "your cloud environment's variables. Free key: "
-            "https://fredaccount.stlouisfed.org/apikey"
-        )
+    key = api_key("FRED_API_KEY")
 
     responses = {}
     for fred_series in SERIES:
-        response = httpx.get(
+        reply = get(
+            FEED_ID,
             ENDPOINT,
             params={
                 "series_id": fred_series,
-                "api_key": api_key,
+                "api_key": key,
                 "file_type": "json",
                 "observation_start": observation_start,
             },
-            timeout=30,
         )
-        response.raise_for_status()  # stop on 4xx/5xx rather than store rubbish
         responses[fred_series] = {
-            "status": response.status_code,
-            "body": response.text,  # verbatim, exactly as it came off the wire
+            "status": reply.status_code,
+            "body": reply.text,  # verbatim, exactly as it came off the wire
         }
+        log.debug("%s: %d characters", fred_series, len(reply.text))
 
-    return {
+    envelope = {
         "envelope_version": ENVELOPE_VERSION,
         "feed_id": FEED_ID,
         "received_at": received_at.isoformat(),
@@ -119,40 +122,38 @@ def fetch(observation_start: str, received_at: datetime) -> dict:
         },
         "responses": responses,
     }
+    return json.dumps(envelope, indent=2).encode()
 
 
-def write_bronze(envelope: dict) -> Path:
-    """Save the envelope to disk and return where it went.
+def read_envelope(path: str | Path) -> dict:
+    """Read a bronze file back and check it is a shape this code understands.
 
-    "Bronze" is the raw layer: what the source sent, never edited, never
-    deleted. This is the cheapest insurance in the whole system.
-
-    The filename is the fetch time. Colons are not allowed in filenames on
-    Windows, so they become hyphens.
+    `ingest.bronze.read_bronze` returns the raw bytes; turning them into an
+    envelope is this feed's business, because only this module knows what its
+    own files look like.
     """
-    folder = REPO_ROOT / "data" / "bronze" / FEED_ID
-    folder.mkdir(parents=True, exist_ok=True)
-    stamp = envelope["received_at"].replace(":", "-")
-    path = folder / f"{stamp}.json"
-    path.write_text(json.dumps(envelope, indent=2))
-    return path
+    payload = read_bronze(path)
+    try:
+        envelope = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        raise ParseError(
+            FEED_ID, f"not valid JSON ({exc})", bronze_path=str(path)
+        ) from exc
 
-
-def read_bronze(path: Path) -> dict:
-    """Load an envelope written earlier. The other half of write_bronze."""
-    envelope = json.loads(path.read_text())
     version = envelope.get("envelope_version")
     if version != ENVELOPE_VERSION:
-        raise BadPayload(
-            f"{path} is a version {version!r} bronze file; this code reads "
-            f"version {ENVELOPE_VERSION}. Files written before 2026-09-05 used "
-            f"an older shape — delete data/ and re-run db/init.py then this "
-            f"ingestor, or write a converter if the history matters."
+        raise ParseError(
+            FEED_ID,
+            f"this is a version {version!r} bronze file; this code reads version "
+            f"{ENVELOPE_VERSION}. Files written before 2026-09-05 used an older "
+            f"shape — write a converter if that history matters",
+            bronze_path=str(path),
+            field="envelope_version",
         )
     return envelope
 
 
-def validate(envelope: dict) -> None:
+def validate(envelope: dict, bronze_path: str | Path | None = None) -> None:
     """Check the reply is the shape we expect, before any of it is stored.
 
     Deliberately checks structure and not plausibility. A rule like "an oil
@@ -160,64 +161,74 @@ def validate(envelope: dict) -> None:
     traded below zero. Refusing real data because it is surprising is worse
     than storing it.
     """
+    where = str(bronze_path) if bronze_path else None
+
+    def refuse(message: str, field: str | None = None, sample: str | None = None):
+        raise ParseError(FEED_ID, message, bronze_path=where, field=field, sample=sample)
+
     requested_start = date.fromisoformat(envelope["request"]["observation_start"])
     # A day of slack, because FRED's clock and ours are in different time zones.
     latest_sane = date.today() + timedelta(days=1)
 
     for fred_series in SERIES:
         if fred_series not in envelope["responses"]:
-            raise BadPayload(f"{fred_series}: missing from the reply entirely")
+            refuse(f"{fred_series}: missing from the reply entirely", field=fred_series)
 
         body = json.loads(envelope["responses"][fred_series]["body"])
 
         if "observations" not in body:
             error = body.get("error_message", "no 'observations' key")
-            raise BadPayload(f"{fred_series}: {error}")
+            refuse(f"{fred_series}: {error}", field="observations")
         if not body["observations"]:
-            raise BadPayload(f"{fred_series}: zero observations returned")
+            refuse(f"{fred_series}: zero observations returned", field="observations")
         try:
             date.fromisoformat(body["realtime_start"])
         except (KeyError, ValueError) as exc:
-            raise BadPayload(f"{fred_series}: unusable realtime_start ({exc})")
+            refuse(f"{fred_series}: unusable realtime_start ({exc})", field="realtime_start")
 
         seen = set()
         for observation in body["observations"]:
             try:
                 period = date.fromisoformat(observation["date"])
             except (KeyError, ValueError) as exc:
-                raise BadPayload(f"{fred_series}: unusable date ({exc})")
+                refuse(f"{fred_series}: unusable date ({exc})", field="date")
             if period in seen:
-                raise BadPayload(f"{fred_series}: {period} appears twice")
+                refuse(f"{fred_series}: {period} appears twice", field="date",
+                       sample=str(period))
             seen.add(period)
             if not requested_start <= period <= latest_sane:
-                raise BadPayload(
-                    f"{fred_series}: {period} is outside the window we asked "
-                    f"for ({requested_start} to {latest_sane})"
+                refuse(
+                    f"{fred_series}: {period} is outside the window we asked for "
+                    f"({requested_start} to {latest_sane})",
+                    field="date",
+                    sample=str(period),
                 )
             raw = observation.get("value")
-            if raw != "." :
+            if raw != ".":
                 try:
                     float(raw)
                 except (TypeError, ValueError):
-                    raise BadPayload(f"{fred_series}: {period} value {raw!r}")
+                    refuse(f"{fred_series}: {period} value {raw!r}", field="value",
+                           sample=repr(raw))
 
 
-def parse(envelope: dict, bronze_path: Path) -> list[tuple]:
+def parse(
+    envelope: dict,
+    bronze_path: str | Path,
+    parse_version: int = 1,
+) -> list[tuple]:
     """Turn a bronze envelope into rows shaped like the `observations` table.
 
-    Takes the envelope rather than a live response, so re-reading an old file
-    and fetching fresh data go down exactly the same code path. Touches no
-    network and no database, which is what makes it straightforward to test.
+    A pure function: payload in, rows out. No network, no database, and no
+    clock — `received_at` comes from the envelope, never from `now()`. That is
+    what makes re-reading an old file and fetching fresh data go down exactly
+    the same code path, and what makes this testable against a saved fixture.
+
+    `parse_version` says which reading of the payload these rows are. 1 for a
+    first read; 2 or more when a parser bug has been fixed and the file re-read.
     """
     received_at = datetime.fromisoformat(envelope["received_at"])
-
-    # Store the path relative to the repo when it is inside it, so the value
-    # means the same thing on any machine. A file somewhere else — someone
-    # re-parsing an archived copy — is recorded as given rather than refused.
-    try:
-        recorded_path = str(bronze_path.relative_to(REPO_ROOT))
-    except ValueError:
-        recorded_path = str(bronze_path)
+    recorded_path = paths.relative_to_repo(bronze_path)
 
     rows = []
 
@@ -250,6 +261,7 @@ def parse(envelope: dict, bronze_path: Path) -> list[tuple]:
                 received_at,     # the vintage: when WE had it
                 source_asof,
                 recorded_path,
+                parse_version,
             ))
     return rows
 
@@ -280,67 +292,174 @@ def register_feed(conn: duckdb.DuckDBPyConnection) -> None:
     )
 
 
+def next_parse_version(conn: duckdb.DuckDBPyConnection, bronze_path: str | Path) -> int:
+    """What the next reading of this file should be numbered.
+
+    1 if the file has never been loaded, otherwise one past the highest version
+    already stored for it. Looked up per file rather than per feed, because two
+    files can be at different versions — only the one whose parse was wrong gets
+    re-read.
+    """
+    highest = conn.execute(
+        """
+        SELECT coalesce(max(parse_version), 0) FROM observations
+        WHERE feed_id = ? AND bronze_path = ?
+        """,
+        [FEED_ID, paths.relative_to_repo(bronze_path)],
+    ).fetchone()[0]
+    return int(highest) + 1
+
+
 def store(conn: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
-    """Add rows, skip any already present, and report how many were new."""
+    """Add rows in one transaction, skip any already present, report how many were new.
+
+    One transaction (NFR-02): either every row of this run lands or none of them
+    does. A half-written vintage would be indistinguishable from a day when the
+    source published less than usual.
+    """
     register_feed(conn)
     before = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
-    # INSERT OR IGNORE: if a row with this exact key is already there, skip it
-    # silently. The key includes received_at, so this only ever collides with a
-    # re-run at the identical timestamp — or with a re-parse of a bronze file
-    # already loaded, which is why --reparse warns instead of pretending.
-    # Columns are named rather than positional, so `parse_version` takes its
-    # default of 1 — this is the first reading of the payload. A re-read after a
-    # parser fix inserts version 2 explicitly; see docs/QUESTIONS.md Q1.
-    conn.executemany(
-        """
-        INSERT OR IGNORE INTO observations
-            (feed_id, series_id, entity_id, period_start, period_end,
-             value, unit, received_at, source_asof, bronze_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
-    )
+
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        # INSERT OR IGNORE: if a row with this exact key is already there, skip
+        # it silently. The key includes received_at and parse_version, so this
+        # only collides with a re-run at the identical timestamp, or a re-parse
+        # that has already been stored.
+        conn.executemany(
+            """
+            INSERT OR IGNORE INTO observations
+                (feed_id, series_id, entity_id, period_start, period_end,
+                 value, unit, received_at, source_asof, bronze_path, parse_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+        conn.execute("COMMIT")
+    except duckdb.Error as exc:
+        conn.execute("ROLLBACK")
+        raise StorageError(
+            FEED_ID, "could not insert the parsed rows", target="observations",
+            cause=str(exc),
+        ) from exc
+
     after = conn.execute("SELECT count(*) FROM observations").fetchone()[0]
     return after - before
+
+
+def record_correction(
+    conn: duckdb.DuckDBPyConnection,
+    bronze_path: str | Path,
+    old_version: int,
+    new_version: int,
+    reason: str,
+) -> None:
+    """Write down why a file was read a second time.
+
+    Without this, a jump from parse_version 1 to 2 in `observations` is a
+    mystery in six months' time.
+    """
+    conn.execute(
+        """
+        INSERT INTO parse_corrections
+            (feed_id, bronze_path, old_version, new_version, reason)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        [FEED_ID, paths.relative_to_repo(bronze_path), old_version, new_version, reason],
+    )
 
 
 def run(
     conn: duckdb.DuckDBPyConnection,
     received_at: datetime | None = None,
     observation_start: str = DEFAULT_START,
-) -> int:
-    """Do one fetch-and-store, and return how many rows were added.
+    bronze_path: str | Path | None = None,
+    reason: str | None = None,
+) -> RunResult:
+    """Do one run of this feed and report what happened.
 
-    Safe to run as often as you like. Running it twice in the same second adds
-    nothing the second time; running it tomorrow adds a fresh copy of every
-    value, stamped with tomorrow's date. Nothing is ever changed or removed.
+    Two modes:
+
+      * normal — fetch from FRED, write the reply to bronze, parse, store.
+        `received_at` defaults to now (UTC) and is our own clock; passing it
+        explicitly is for tests.
+
+      * replay — pass `bronze_path` and no request is made. The file is re-read
+        and stored under the next `parse_version`, keeping the file's ORIGINAL
+        `received_at`. If that file has been loaded before, this is a parser
+        correction and `reason` is required, so the `parse_corrections` row can
+        say what was wrong.
+
+    Never raises for a feed failure: a source that is down, refuses us, or sends
+    something unparseable is recorded in `ingest_runs` and returned as a failed
+    RunResult. Programmer errors — a missing table, a bad argument — are left to
+    crash, because they should be fixed rather than logged.
     """
     if received_at is None:
-        received_at = datetime.now()
+        received_at = clock.utc_now()
 
-    envelope = fetch(observation_start, received_at)
-    bronze_path = write_bronze(envelope)  # disk first, always
-    validate(envelope)                    # only now do we look at it
-    return store(conn, parse(envelope, bronze_path))
+    replaying = bronze_path is not None
+    parse_version = next_parse_version(conn, bronze_path) if replaying else 1
+    if replaying and parse_version > 1 and not reason:
+        raise ValueError(
+            f"{bronze_path} has already been loaded, so re-reading it is a parser "
+            f"correction: pass reason=... saying what the parser got wrong "
+            f"(--reason on the command line)"
+        )
 
+    stored_path: str | None = None
+    envelope: dict | None = None
+    path: Path | None = None
+    rows: list[tuple] = []
 
-def run_from_bronze(conn: duckdb.DuckDBPyConnection, path: Path) -> tuple[int, int]:
-    """Re-read a bronze file into the database. Returns (added, already there).
+    if replaying:
+        # Read the file before opening the run, because the file's own timestamp
+        # is the vintage this run is writing, and `ingest_runs` should say so
+        # rather than recording the wall clock. Inventing a new received_at
+        # would claim a vintage that never happened.
+        path = Path(bronze_path)
+        stored_path = paths.relative_to_repo(path)
+        try:
+            envelope = read_envelope(path)
+            received_at = datetime.fromisoformat(envelope["received_at"])
+        except ControlroomError as exc:
+            # An unreadable file is still an attempt, and still gets recorded —
+            # stamped with our clock, since the file never told us its own.
+            log.error("%s", exc)
+            run_id = start_run(conn, FEED_ID, received_at)
+            return finish_run(
+                conn, run_id, "failed", bronze_path=stored_path, error=str(exc)
+            )
 
-    Use this after fixing a parsing bug. The rows keep the original file's
-    `received_at`, because that genuinely is when the data arrived — inventing
-    a new one would claim a vintage that never happened.
+    run_id = start_run(conn, FEED_ID, received_at)
 
-    Consequence worth understanding: if those rows are already loaded, this adds
-    nothing, because the key already exists. Correcting a vintage that was
-    stored *wrongly* is a separate and deliberate operation — it means deleting
-    rows, which rule 1 forbids without a decision. See docs/QUESTIONS.md.
-    """
-    envelope = read_bronze(path)
-    validate(envelope)
-    rows = parse(envelope, path)
-    added = store(conn, rows)
-    return added, len(rows) - added
+    try:
+        if not replaying:
+            payload = fetch(observation_start, received_at)   # may raise FeedError
+            path = write_bronze(FEED_ID, received_at, payload)  # disk first, always
+            stored_path = paths.relative_to_repo(path)
+            envelope = json.loads(payload)
+
+        validate(envelope, stored_path)          # only now do we look at it
+        rows = parse(envelope, path, parse_version)
+        inserted = store(conn, rows)
+
+        if replaying and parse_version > 1:
+            record_correction(conn, path, parse_version - 1, parse_version, reason)
+
+    except ControlroomError as exc:
+        # A feed or storage failure: recorded, returned, not raised. The bronze
+        # file, if one was written, is still on disk.
+        log.error("%s", exc)
+        return finish_run(
+            conn, run_id, "failed", rows_fetched=len(rows),
+            bronze_path=stored_path, error=str(exc),
+        )
+
+    return finish_run(
+        conn, run_id, "ok", rows_fetched=len(rows), rows_inserted=inserted,
+        bronze_path=stored_path,
+    )
 
 
 def main() -> None:
@@ -348,7 +467,13 @@ def main() -> None:
     parser.add_argument(
         "--reparse",
         metavar="FILE",
-        help="re-read a bronze file instead of fetching from FRED",
+        help="re-read a bronze file we already have instead of fetching from FRED",
+    )
+    parser.add_argument(
+        "--reason",
+        metavar="TEXT",
+        help="what the old parser got wrong; required when re-reading a file "
+             "whose rows are already stored",
     )
     parser.add_argument(
         "--start",
@@ -358,30 +483,34 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    if not DB_PATH.exists():
+    if not settings.db_path.exists():
         raise SystemExit(
-            f"{DB_PATH} does not exist. Build it first:\n"
+            f"{settings.db_path} does not exist. Build it first:\n"
             f"    uv run python db/init.py"
         )
 
-    conn = duckdb.connect(str(DB_PATH))
+    conn = duckdb.connect(str(settings.db_path))
     try:
-        if args.reparse:
-            path = Path(args.reparse).resolve()
-            added, skipped = run_from_bronze(conn, path)
-            print(f"{FEED_ID}: re-read {path.name}")
-            print(f"  {added} rows added, {skipped} already present")
-            if added == 0 and skipped:
-                print("  (nothing changed — that vintage is already loaded)")
-            return
+        result = run(
+            conn,
+            observation_start=args.start,
+            bronze_path=args.reparse,
+            reason=args.reason,
+        )
+        print(result.summary())
 
-        received_at = datetime.now()
-        added = run(conn, received_at=received_at, observation_start=args.start)
+        if result.status == "failed":
+            raise SystemExit(1)
+
         total = conn.execute(
             "SELECT count(*) FROM observations WHERE feed_id = ?", [FEED_ID]
         ).fetchone()[0]
-        print(f"{FEED_ID}: added {added} rows at {received_at:%Y-%m-%d %H:%M:%S}")
-        print(f"  {total} rows in total across all runs of this feed")
+        print(f"  run {result.received_at:%Y-%m-%d %H:%M:%S} UTC, "
+              f"{total} rows in total across all runs of this feed")
+
+        if result.rows_inserted == 0:
+            print("  (nothing new — that vintage is already stored)")
+
         for series_id, unit in SERIES.values():
             row = conn.execute(
                 """
@@ -390,9 +519,11 @@ def main() -> None:
                 FROM observations
                 WHERE feed_id = ? AND series_id = ? AND received_at = ?
                 """,
-                [FEED_ID, series_id, received_at],
+                [FEED_ID, series_id, result.received_at],
             ).fetchone()
-            print(f"  {series_id:<12} {row[0]} to {row[1]}  ({row[2]} empty days, {unit})")
+            if row[0] is not None:
+                print(f"  {series_id:<12} {row[0]} to {row[1]}  "
+                      f"({row[2]} empty days, {unit})")
     finally:
         conn.close()
 

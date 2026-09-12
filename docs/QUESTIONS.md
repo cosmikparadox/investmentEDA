@@ -132,8 +132,17 @@ call.
 Done by CC on 2026-09-11: `core/` (paths, errors, logging with redaction,
 config, http), the `ingest_runs` table, and `ingest/runs.py` with `RunResult`,
 `start_run()` and `finish_run()`. 30 new tests. CLAUDE.md's first forbidden
-bullet amended as instructed. Left for the owner: moving `ingest/fred.py` onto
-them. `ingest/bronze.py` is not written — see Q4.
+bullet amended as instructed.
+
+**Amended 2026-09-12: the owner delegated the migration to CC.** The split in
+the answer above — owner migrates `ingest/fred.py`, CC reviews — was reversed by
+the owner on 12 September, and CC did the migration: `core.http.get`,
+`core.config.api_key`, `core.clock.utc_now()`, `ingest.bronze`,
+`start_run()`/`finish_run()`, plus the `bronze_path` replay parameter and the
+`parse_corrections` write from Q1. `run()` now returns a `RunResult` and records
+failures rather than raising them. The learning goal the original split existed
+to serve is unchanged and still sits at Week 4: explain every table and column
+out loud without looking.
 
 **Q3 (2026-09-11, CC) — UTC or local time? The PRD and the database disagree.**
 

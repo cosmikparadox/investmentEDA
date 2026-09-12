@@ -415,3 +415,40 @@ went through the configured logger. `getMessage()` applies the arguments first;
 the result is redacted and the args cleared. There is a test with a key passed
 as a log argument. Rules out: a redaction filter that only covers the cases
 where the whole message was built before logging.
+
+**2026-09-12 — The UTC cutover happened: `run_id` 1, `started_at`
+2026-09-12 10:03:44 UTC.**
+Why: filling in the placeholder left in the 2026-09-11 cutover entry. The first
+run of the migrated `ingest/fred.py` is the boundary between local-time and UTC
+`received_at` values. Precisely:
+
+- Anything in `observations` with `received_at` **before 2026-09-12 10:03:44**
+  was written by the pre-migration code using the machine's local clock, which
+  was British Summer Time. Subtract one hour to compare it with anything newer.
+  The same applies to the timestamps in those rows' bronze filenames.
+- Anything from that moment onward is UTC, from `core.clock.utc_now()`.
+- `ingest_runs` is UTC for its whole life: `run_id` 1 is the run named above.
+
+On the owner's laptop the rows from 4–5 September are the BST ones, and its own
+`ingest_runs` starts at `run_id` 1 with the first run after pulling this commit —
+the timestamp above is from the machine this ran on, not from that database. The
+boundary rule is what matters and it is the same on both: BST before the first
+recorded run, UTC after it.
+
+**2026-09-12 — `ingest/fred.py` migrated by CC, not by the owner.**
+Why: the owner delegated it, reversing the Q2 answer's split. Q2's reasoning for
+the owner doing it was learning by using the plumbing; the Week 4 gate — explain
+every table and column out loud without looking — is unchanged and is still the
+real test of that. What the migration changed, beyond the swaps: `run()` now
+returns a `RunResult` rather than a row count, and never raises for a feed
+failure — a source that is down, refuses us, or sends nonsense is recorded in
+`ingest_runs` and returned as failed, per ARCHITECTURE.md §3.1. Rules out: a
+caller having to wrap `run()` in a try block to find out whether a feed worked.
+
+**2026-09-12 — Re-reading an already-loaded bronze file requires a stated reason.**
+Why: `run(conn, bronze_path=...)` with no `reason` raises `ValueError` when the
+file's rows are already stored, because that case is a parser correction and
+`parse_corrections.reason` is what makes the jump from version 1 to 2
+explainable later. Re-reading a file that was never loaded — rebuilding a
+database from bronze — is a plain first read and needs no reason. Rules out: a
+silent correction, which is the thing Q1 was asked to prevent.
