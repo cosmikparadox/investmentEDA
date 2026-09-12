@@ -452,3 +452,60 @@ file's rows are already stored, because that case is a parser correction and
 explainable later. Re-reading a file that was never loaded — rebuilding a
 database from bronze — is a plain first read and needs no reason. Rules out: a
 silent correction, which is the thing Q1 was asked to prevent.
+
+**2026-09-12 — `ingest/eia.py` and `ingest/portwatch.py` written as two more
+plain modules, deliberately repetitive.**
+Why: each is the same seven steps as `ingest/fred.py` — open the run, fetch,
+bronze, validate, parse, insert, close the run — with its own `fetch`,
+`validate` and `parse`. The repetition is the point at this stage: CLAUDE.md
+allows shared functions and forbids a shared shape, and three concrete feeds now
+exist to compare if an abstraction is ever proposed. What is shared is what is
+genuinely identical (`core/`, `bronze`, `runs`); what differs is what each
+source actually does, and that differs a lot. Rules out: a base ingestor class,
+for now, on the grounds that the three files look similar.
+
+**2026-09-12 — `period_start = period_end` for both new feeds, for different
+reasons.**
+Why: EIA crude stocks is a *stock* — the level of oil in tanks on that Friday —
+so giving it a seven-day span would claim it describes the whole week, which it
+does not. PortWatch transits are a *flow*, but over exactly one day, so the span
+is that day. The distinction matters the first time someone averages them
+together; it is written into both parsers as a comment rather than left to be
+rediscovered. Rules out: inferring a period's length from a feed's publication
+cadence, which would be wrong for both.
+
+**2026-09-12 — `source_asof` is NULL for both new feeds.**
+Why: FRED tells us when it last refreshed a series, so `ingest/fred.py` records
+it. The EIA publishes on a schedule but puts no timestamp in the reply, and
+PortWatch backfills silently with no indication of when a row was recomputed. A
+schedule is not a timestamp. NULL says "the source did not tell us", which is
+true; filling it with the release time would be inventing evidence. Rules out:
+deriving `source_asof` from a cadence.
+
+**2026-09-12 — PortWatch's `date` field is read in both shapes it might arrive in.**
+Why: `docs/feeds/portwatch.md` recorded epoch milliseconds; the live endpoint
+returns `"YYYY-MM-DD"` strings. ArcGIS serves `esriFieldTypeDateOnly` either way
+depending on a server-side setting nobody here controls, and a flip would
+otherwise corrupt or reject every period in the table. `to_date()` accepts a
+string or a number and refuses anything else, with a test asserting both shapes
+produce identical rows. The feed doc has been corrected. Rules out: trusting a
+written field spec over what the endpoint actually returns.
+
+**2026-09-12 — Two structural checks that look like content checks, and why they
+are not.**
+Why: `ingest/eia.py` refuses a reply whose `units` is not `MBBL`, and refuses
+one where fewer rows arrived than `response.total` says exist. Neither judges
+whether a number is plausible — the first catches the source redefining what
+every stored number means, the second catches paging stopping early, which would
+look exactly like a series that ends. The plausibility line is held elsewhere:
+there are tests asserting that a 20-million-barrel weekly build and a collapse
+of Hormuz traffic to zero are both stored without complaint. Rules out: range
+checks, outlier rejection and smoothing, in these ingestors as in FRED's.
+
+**2026-09-12 — PortWatch is registered with cadence 'weekly' though its rows are
+daily.**
+Why: `feed_registry.cadence` is how often the feed is *published*, which is what
+the dashboard's staleness panel needs (ARCHITECTURE.md §5: warn if the newest run
+is older than 2× the cadence). PortWatch publishes weekly, on Tuesdays, and each
+release contains daily rows. The row granularity is already in the data, in
+`period_start`. Rules out: reading `cadence` as the spacing between observations.

@@ -44,3 +44,28 @@ Feb 2026 degrade the counts. Pre-crisis baseline ~85/day; 3–6/day in late Aug 
 |---|---|---|---|
 | `hormuz_transits_total` | `n_total` | `vessels` | `chokepoint:hormuz` |
 | `hormuz_transits_tanker` | `n_tanker` | `vessels` | `chokepoint:hormuz` |
+
+## Verified on a live call, 2026-09-12
+
+Checked against the layer metadata and the real endpoint while writing
+`ingest/portwatch.py`. Three of the four items above are confirmed; one is
+wrong.
+
+- **`date` is NOT epoch milliseconds.** The field type is
+  `esriFieldTypeDateOnly` and it comes back as a plain `"2026-09-06"` string.
+  ArcGIS serves date-only fields either way depending on a server-side setting
+  we do not control, so `ingest/portwatch.py` accepts both shapes and there is a
+  test asserting they produce identical rows. If it ever flips, nothing breaks.
+- **`maxRecordCount` is 1000**, as assumed. `exceededTransferLimit: true` comes
+  back on a full request, and paging with `resultOffset` works. Ordering by
+  `ObjectId ASC` rather than by date, because paging is only safe if the server
+  sorts identically on every request.
+- **History is 2019-01-01 to 2026-09-06, 2,806 rows** for `chokepoint6` — three
+  pages. `portid='chokepoint6'` and `portname='Strait of Hormuz'` confirmed on
+  live rows.
+- **The collapse is real in the data.** Late August 2026 days are 2–7 vessels
+  against a pre-crisis norm near 85, and the last 30 days average 4.1. Whether
+  that is ships not sailing or ships not broadcasting is exactly the question
+  this feed cannot answer on its own — see the caveats above.
+- **Date filtering server-side was not tested**, because it is not needed: the
+  whole history is three requests, and filtering locally is visible and cheap.

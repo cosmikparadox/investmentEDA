@@ -41,3 +41,26 @@ US government work, public domain. Cite EIA.
 | series_id | unit | entity_id |
 |---|---|---|
 | `us_crude_stocks_ex_spr` | `kbbl` | `country:USA` |
+
+## Verified on a live call, 2026-09-12
+
+Endpoint, parameters and response shape are exactly as documented above.
+`units` really is the literal string `"MBBL"`. Confirmed while writing
+`ingest/eia.py`.
+
+- **610 weeks** returned for `start=2015-01-01`, from 2015-01-02 to 2026-09-04,
+  well inside the 5000-row cap — one page. The ingestor pages anyway, and
+  refuses to store a run where `len(rows) < response.total`, because a silently
+  truncated series looks exactly like a series that ends.
+- **`response.total` is the row count for the whole query**, not for the page.
+  That is what makes the truncation check possible.
+- **There is no publication timestamp anywhere in the reply.** The release
+  schedule is Wednesday 10:30 ET, but a schedule is not a timestamp, so
+  `source_asof` is stored as NULL rather than a guess. `received_at` is the only
+  honest time axis this feed has.
+- **The period is a week-ending Friday** — 2026-07-03, 2026-07-10 and so on.
+  Stored with `period_start = period_end = that Friday`, because ending stocks
+  is a level in the tanks on that day, not a flow across the week.
+- **No revision has been observed yet.** Both pulls so far agree. That is
+  expected: revisions show up over weeks, which is the point of running this
+  daily and keeping every vintage.

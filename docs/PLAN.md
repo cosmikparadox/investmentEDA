@@ -32,11 +32,11 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 
 ## Week 2 — the other two feeds and the idempotency test
 
-- [ ] Research: confirm the exact PortWatch API endpoint and response shape for the Hormuz chokepoint series; write findings to `docs/feeds/portwatch.md`.
-- [ ] Research: same for EIA crude stocks series ID (weekly, excluding SPR); `docs/feeds/eia.md`.
-- [ ] CC: `ingest/eia.py` following the same shape as the owner's FRED ingestor.
-- [ ] CC: `ingest/portwatch.py`. Note: PortWatch may return the full history each call. That is fine — it all gets one `received_at`, and the primary key handles it.
-- [~] CC: `tests/test_idempotency.py` with fixture payloads for all three. **FRED done (16 tests, 2026-09-05); EIA and PortWatch fixtures still to add.**
+- [x] ~~Research:~~ **CC verified live 2026-09-12** — endpoint, paging and field types confirmed; `date` is a `YYYY-MM-DD` string, not epoch milliseconds as the spec said. Findings in `docs/feeds/portwatch.md`.
+- [x] ~~Research:~~ **CC verified live 2026-09-12** — `WCESTUS1`, units literally `MBBL`, no publication timestamp in the reply. Findings in `docs/feeds/eia.md`.
+- [x] CC: `ingest/eia.py`. **Done 2026-09-12 — 610 weeks from 2015-01-02, 17 tests.**
+- [x] CC: `ingest/portwatch.py`. **Done 2026-09-12 — the full history every call, 2,806 days x 2 series = 5,612 rows a run, one `received_at`, 21 tests.**
+- [x] CC: fixture payloads and idempotency tests for all three. **Done 2026-09-12: `test_idempotency.py` (FRED, 24), `test_eia.py` (17), `test_portwatch.py` (21). 120 tests in the suite.**
 - [ ] Owner: run the tests. Break one on purpose. Understand why it fails.
 - [ ] CC: `Makefile` with `init`, `ingest`, `test`, `dashboard` targets.
 - [ ] Milestone: `make ingest` twice in a row; row count in `observations` exactly doubles.
