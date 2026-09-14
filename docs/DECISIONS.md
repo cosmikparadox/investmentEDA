@@ -588,3 +588,20 @@ too harsh depending on which bug it hit.
 Why: `ASOF` is a DuckDB keyword — it has ASOF joins — and `SET VARIABLE asof`
 is a parser error, which is a confusing way to discover the name is taken. Noted
 here because the obvious name is the wrong one and someone will try it again.
+
+**2026-09-14 — A database locked by a running ingest is a wait, not a crash.**
+Why: the owner ran the dashboard on Windows while `python -m ingest` was still
+fetching, and got a raw `duckdb.IOException` traceback. DuckDB keeps everything
+in one file and allows several readers or one writer, never both, so an ingest
+genuinely locks the page out for the half-minute it runs. That will happen every
+morning, since fetching and then looking is the whole daily habit. `queries.
+connect()` now turns that error into a `DatabaseBusy` and both pages say what is
+happening and offer a "Try again" button.
+
+Worth recording because of *why* it was missed: on Linux and macOS a read-only
+connection is allowed alongside a writer, and on Windows it is not. Every check
+of this app until now ran on Linux, so the failure could not appear. The test
+takes the lock with a real second process and skips where the platform permits
+the read, with the error-mapping checked unconditionally. Rules out: assuming a
+local-only, single-user tool cannot have a concurrency problem — it has exactly
+one, and it fires daily.

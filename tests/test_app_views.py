@@ -176,3 +176,68 @@ def test_a_continuous_series_is_left_alone():
         "value": [68.0, 69.0, 70.0],
     })
     assert len(break_the_line_at_missing_weeks(frame)) == 3
+
+
+# --------------------------------------------------------------------------
+# One writer at a time: an ingest locks the file the dashboard reads.
+# --------------------------------------------------------------------------
+
+def test_a_running_ingest_is_reported_as_busy_not_as_a_crash(conn):
+    """DuckDB allows several readers or one writer, never both.
+
+    So while `uv run python -m ingest` is fetching, the dashboard genuinely
+    cannot open the database. That is a wait of a few seconds every morning, and
+    the page has to say so — showing a raw IO traceback instead makes a normal
+    event look like a broken app.
+
+    The lock is taken by a real second process here, because that is what the
+    situation actually is; a mocked exception would prove only that the mock
+    works. It is skipped on Linux and macOS, which allow a read-only connection
+    alongside a writer — Windows does not, and that difference is exactly why
+    this went unnoticed until the owner ran it on their own machine. The mapping
+    from DuckDB's error to our own is checked unconditionally below.
+    """
+    import subprocess
+    import sys
+    import time
+
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         f"import duckdb, time; duckdb.connect({str(conn)!r}); time.sleep(30)"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        # Give the other process a moment to actually take the lock.
+        for _ in range(50):
+            try:
+                queries.connect().close()
+                time.sleep(0.1)
+            except queries.DatabaseBusy as busy:
+                assert "already open" in str(busy) or "another process" in str(busy)
+                break
+        else:
+            pytest.skip(
+                "this platform allows a reader alongside a writer; Windows does not"
+            )
+    finally:
+        holder.terminate()
+        holder.wait(timeout=10)
+
+    # And once the writer has gone, the page works again with no intervention.
+    connection = queries.connect()
+    try:
+        assert connection.execute("SELECT count(*) FROM observations").fetchone()[0] == 2
+    finally:
+        connection.close()
+
+
+def test_a_busy_database_is_not_reported_as_a_missing_one(monkeypatch, conn):
+    """The two cases need different advice: one says wait, the other says run init."""
+    import duckdb as duckdb_module
+
+    def locked(*args, **kwargs):
+        raise duckdb_module.IOException("File is already open in another process")
+
+    monkeypatch.setattr(duckdb_module, "connect", locked)
+    with pytest.raises(queries.DatabaseBusy):
+        queries.connect()

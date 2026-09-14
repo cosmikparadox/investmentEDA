@@ -35,7 +35,16 @@ def render_log() -> None:
     try:
         conn = queries.connect()
     except FileNotFoundError as missing:
-        st.error(f"No database at {missing}. Run `make init` first.")
+        st.error(
+            f"No database at {missing}. Build it first:\n\n"
+            f"    uv run python db/init.py"
+        )
+        return
+    except queries.DatabaseBusy:
+        st.info(
+            "**The database is busy.** An ingest is probably still running in "
+            "another window. Wait for it to finish, then reload this page."
+        )
         return
 
     try:

@@ -145,6 +145,25 @@ def render_one_series(row: pd.Series, since: date, window_end: date) -> None:
             st.success("Saved. It is on the Log page, and it cannot be edited.")
 
 
+def wait_for_the_writer() -> None:
+    """Say why the page cannot read the database, and what to do about it.
+
+    DuckDB is one file with one writer at a time, so an ingest locks out the
+    dashboard while it runs. That is a normal few seconds every morning, not a
+    problem to fix — but it has to read as a wait rather than a crash.
+    """
+    st.info(
+        "**The database is busy.** Something is writing to it — almost always "
+        "an ingest still running in another window.\n\n"
+        "Wait for `uv run python -m ingest` to print its table of feeds, then "
+        "press the button below. (A second copy of this dashboard, or a DuckDB "
+        "session left open, will do the same thing.)"
+    )
+    if st.button("Try again"):
+        st.cache_data.clear()
+        st.rerun()
+
+
 def render_dashboard() -> None:
     st.title("controlroom")
     st.caption(
@@ -156,13 +175,19 @@ def render_dashboard() -> None:
         catalogue = load_catalogue()
     except FileNotFoundError as missing:
         st.error(
-            f"No database at {missing}. Build it and pull the feeds first:\n\n"
-            f"    make init\n    make ingest"
+            f"No database at {missing}. Build it and fetch the feeds first:\n\n"
+            f"    uv run python db/init.py\n    uv run python -m ingest"
         )
+        return
+    except queries.DatabaseBusy:
+        wait_for_the_writer()
         return
 
     if catalogue.empty:
-        st.warning("The database is built but empty. Run `make ingest`.")
+        st.warning(
+            "The database is built but empty. Fetch the feeds:\n\n"
+            "    uv run python -m ingest"
+        )
         return
 
     choice = st.radio("Window", list(WINDOWS), horizontal=True, index=1)
@@ -185,7 +210,11 @@ def render_dashboard() -> None:
         )
         st.divider()
 
-    freshness, runs = load_panels()
+    try:
+        freshness, runs = load_panels()
+    except queries.DatabaseBusy:
+        wait_for_the_writer()
+        return
 
     st.subheader("Last received")
     st.caption("Our own clock: when we last had this feed, not when it was published.")

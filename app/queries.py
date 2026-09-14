@@ -26,6 +26,17 @@ from core.config import settings  # noqa: E402  (must follow the path line above
 EXPLORE = "observations_explore"
 
 
+class DatabaseBusy(RuntimeError):
+    """Something else is writing to the database, so nothing may read it yet.
+
+    DuckDB keeps everything in one file and allows either several readers or one
+    writer, never both at once. An ingest run is a writer. So while `uv run
+    python -m ingest` is fetching, this page genuinely cannot open the file —
+    which is a wait, not a fault, and the page says so rather than showing a
+    stack trace.
+    """
+
+
 def connect() -> duckdb.DuckDBPyConnection:
     """Open the database read-only, so the app cannot damage what was collected.
 
@@ -35,7 +46,12 @@ def connect() -> duckdb.DuckDBPyConnection:
     """
     if not settings.db_path.exists():
         raise FileNotFoundError(settings.db_path)
-    return duckdb.connect(str(settings.db_path), read_only=True)
+    try:
+        return duckdb.connect(str(settings.db_path), read_only=True)
+    except duckdb.IOException as exc:
+        # The usual cause is an ingest still running in another window. It can
+        # also be a second copy of the dashboard, or a DuckDB CLI left open.
+        raise DatabaseBusy(str(exc)) from exc
 
 
 def series_catalogue(conn: duckdb.DuckDBPyConnection) -> pd.DataFrame:
