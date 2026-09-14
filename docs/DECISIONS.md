@@ -562,3 +562,29 @@ inventing a fourth panel. Charts are never combined: Brent in dollars a barrel
 and OVX as an index share an entity but not a scale, and putting them on one
 axis would invite a comparison that means nothing. Rules out: a combined chart,
 and a series nobody can reach.
+
+**2026-09-14 — `queries/asof.sql` reads the base table, and is the only thing
+that does.**
+Why: FR-60 wants "what did we know about series X on date D", and answering it
+honestly means seeing every vintage — which the app's view deliberately does not
+show. So this query reads `observations` directly, and `queries/README.md` says
+plainly why that is allowed here and nowhere else: the holdout is reachable from
+a file you open deliberately to test a logged observation, not from the page you
+browse every morning. The moment it is reachable from the latter it stops being
+a test set. Rules out: the app importing anything from `queries/`.
+
+**2026-09-14 — The as-of query returns the corrected reading of a payload, not
+our original mistake.**
+Why: a parse correction keeps the payload's original `received_at`, so an as-of
+query returns version 2 for a date before the fix was made. That is right for
+the question being asked — "what did the source tell us by then" — because the
+correction is us fixing our own misreading, not the source changing its mind.
+The different question, "what did we *believe* on that date, mistakes included",
+is answerable from `parse_corrections.corrected_at`, and the file says so. Rules
+out: silently conflating the two, which would make a backtest either too kind or
+too harsh depending on which bug it hit.
+
+**2026-09-14 — The variable is `asof_date`, not `asof`.**
+Why: `ASOF` is a DuckDB keyword — it has ASOF joins — and `SET VARIABLE asof`
+is a parser error, which is a confusing way to discover the name is taken. Noted
+here because the obvious name is the wrong one and someone will try it again.

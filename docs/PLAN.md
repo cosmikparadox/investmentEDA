@@ -53,7 +53,7 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 
 ## Week 4 — prove the design
 
-- [ ] CC: `queries/asof.sql` — a parameterised point-in-time query: "what did we know about series X on date Y."
+- [x] CC: `queries/asof.sql` — a parameterised point-in-time query: "what did we know about series X on date Y." **Done 2026-09-14. 9 tests, including the one that matters: ask before a revision arrived and you get the older vintage back. Run by hand on the real database — two vintages of Brent, identical values so far, because FRED has revised nothing in two days.**
 - [ ] Owner: run it for a date last week. Compare to today. If EIA revised anything, you will see two vintages. If not, you will see that the design supports it anyway.
 - [ ] Owner: write `docs/RETRO.md` — one page. What was harder than expected, what was easier, what you now understand that you did not. Honest.
 - [ ] Owner and Research together: read every entry in `observation_log`. Pick the one that is most specific and most testable — not the most exciting. That becomes the v1 claim. Everything else stays `noted`.
