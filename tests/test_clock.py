@@ -1,6 +1,6 @@
 """Tests for core/clock.py — everything stored is UTC, stored naive."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 from core import clock
 
@@ -12,7 +12,7 @@ def test_utc_now_has_no_timezone_attached():
 
 def test_utc_now_really_is_utc():
     """Within a second of the reference clock, whatever zone the machine is in."""
-    reference = datetime.now(timezone.utc).replace(tzinfo=None)
+    reference = datetime.now(UTC).replace(tzinfo=None)
     assert abs(clock.utc_now() - reference) < timedelta(seconds=1)
 
 

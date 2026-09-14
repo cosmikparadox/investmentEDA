@@ -35,7 +35,7 @@ their terms, and is recorded in `feed_registry.license_notes`.
 
 import argparse
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -182,7 +182,7 @@ def to_date(raw: object) -> date:
         return date.fromisoformat(raw)
     if isinstance(raw, (int, float)):
         # Epoch milliseconds, UTC. Their day boundary is UTC, not local.
-        return datetime.fromtimestamp(raw / 1000, tz=timezone.utc).date()
+        return datetime.fromtimestamp(raw / 1000, tz=UTC).date()
     raise ValueError(f"date is {type(raw).__name__}, expected a string or a number")
 
 

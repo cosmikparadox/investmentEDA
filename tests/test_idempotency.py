@@ -56,9 +56,9 @@ def load(conn, envelope, received_at: str, parse_version: int = 1) -> int:
     return fred.store(conn, fred.parse(stamped, FIXTURE, parse_version))
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Rule 1: re-running appends a vintage, it does not update or delete.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 def test_second_run_doubles_the_rows_and_changes_none_of_the_first(conn, envelope):
     load(conn, envelope, "2026-09-05T06:00:00")
@@ -103,9 +103,9 @@ def test_both_vintages_survive_but_only_the_newest_is_shown(conn, envelope):
     ).fetchall() == [(datetime(2026, 9, 6, 6, 0),)]
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Bronze is only insurance if you can actually claim on it.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 def test_reparsing_a_bronze_file_reproduces_identical_rows(conn, envelope, tmp_path):
     """Fix a parser bug, re-read the file you already have, get the same rows."""
@@ -130,9 +130,9 @@ def test_a_bronze_file_of_an_unknown_version_is_refused(tmp_path):
         fred.read_envelope(path)
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Published gaps are information, not something to drop.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 def test_market_holidays_are_stored_as_empty_rows_not_skipped(conn, envelope):
     load(conn, envelope, "2026-09-05T06:00:00")
@@ -164,9 +164,9 @@ def test_the_two_series_keep_their_own_source_dates(conn, envelope):
     ).fetchall() == [(datetime(2026, 9, 5, 6, 0),)], "received_at is our clock alone"
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # The holdout must be a clean partition, or the whole exercise is theatre.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 def test_explore_and_holdout_split_the_data_with_no_overlap_and_no_loss(conn, envelope):
     load(conn, envelope, "2026-09-05T06:00:00")
@@ -197,9 +197,9 @@ def test_the_dashboard_view_hides_at_least_one_week_we_can_name(conn, envelope):
     assert hidden, "the fixture spans two ISO weeks; the split must remove one"
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Validation: refuse a bad reply before it reaches the database.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 def test_a_good_reply_passes(envelope):
     fred.validate(envelope)  # must not raise
@@ -256,10 +256,10 @@ def test_a_negative_price_is_accepted(envelope):
     fred.validate(envelope)  # must not raise
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # run(): the whole ingestor, with FRED replaced by the saved fixture.
 # core.http.get is the one thing tests patch (ARCHITECTURE.md §7).
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
 @pytest.fixture
 def offline_fred(monkeypatch, envelope, tmp_path):
@@ -354,11 +354,13 @@ def test_a_bad_payload_keeps_the_bronze_file(conn, offline_fred, monkeypatch, en
     assert Path(result.bronze_path).exists() or (REPO_ROOT / result.bronze_path).exists()
 
 
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 # Replay: a parser correction, end to end. docs/QUESTIONS.md Q1.
-# --------------------------------------------------------------------------
+# ----------------------------------------------------------------------
 
-def test_a_parser_bug_is_corrected_by_re_reading_the_same_file(conn, offline_fred, monkeypatch):
+def test_a_parser_bug_is_corrected_by_re_reading_the_same_file(
+    conn, offline_fred, monkeypatch
+):
     """The Q1 acceptance test, through run().
 
     Store a vintage with a deliberately wrong parser — every value ten times too
@@ -379,7 +381,9 @@ def test_a_parser_bug_is_corrected_by_re_reading_the_same_file(conn, offline_fre
         else Path(first.bronze_path)
 
     monkeypatch.setattr(fred, "parse", good_parse)  # the fix
-    corrected = fred.run(conn, bronze_path=bronze_file, reason="values were ten times too small")
+    corrected = fred.run(
+        conn, bronze_path=bronze_file, reason="values were ten times too small"
+    )
 
     assert corrected.status == "ok"
     assert corrected.rows_inserted == first.rows_inserted
@@ -422,7 +426,9 @@ def test_re_reading_an_already_corrected_file_needs_a_reason(conn, offline_fred)
         fred.run(conn, bronze_path=path)
 
 
-def test_replaying_a_file_never_loaded_is_a_plain_first_read(conn, offline_fred, tmp_path, envelope):
+def test_replaying_a_file_never_loaded_is_a_plain_first_read(
+    conn, offline_fred, tmp_path, envelope
+):
     """Rebuilding a database from bronze is not a correction: no reason needed."""
     import copy as copy_module
     stamped = copy_module.deepcopy(envelope)

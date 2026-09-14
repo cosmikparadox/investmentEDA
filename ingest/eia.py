@@ -279,7 +279,8 @@ def register_feed(conn: duckdb.DuckDBPyConnection) -> None:
         [
             FEED_ID,
             "US EIA, API v2",
-            "EIA weekly survey of commercial crude oil stocks (Weekly Petroleum Status Report)",
+            "EIA weekly survey of commercial crude oil stocks "
+            "(Weekly Petroleum Status Report)",
             "weekly",
             ENDPOINT,
             "US government work, public domain. Cite EIA.",
@@ -320,8 +321,8 @@ def store(conn: duckdb.DuckDBPyConnection, rows: list[tuple]) -> int:
     except duckdb.Error as exc:
         conn.execute("ROLLBACK")
         raise StorageError(
-            FEED_ID, "could not insert the parsed rows", target="observations",
-            cause=str(exc),
+            FEED_ID, "could not insert the parsed rows",
+            target="observations", cause=str(exc),
         ) from exc
 
     after = conn.execute("SELECT count(*) FROM observations").fetchone()[0]

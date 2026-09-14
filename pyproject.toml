@@ -18,3 +18,20 @@ dependencies = [
 # ordinary packages, without installing anything.
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.7",
+]
+
+[tool.ruff]
+# The code in this repo is written to be read by someone learning, which means
+# longer names and fuller comments than a terse style would use. 95 columns
+# keeps that readable without letting lines run off the side of a laptop screen.
+line-length = 95
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes (real errors), I import order, UP modern syntax,
+# B common bugs. Deliberately not the whole catalogue: a linter that shouts
+# about style gets switched off, and then it is not catching the real ones.
+select = ["E", "W", "F", "I", "UP", "B"]

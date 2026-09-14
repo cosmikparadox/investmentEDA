@@ -12,7 +12,7 @@ API key, and no data/ directory involved.
 
 import copy
 import json
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
@@ -143,7 +143,7 @@ def test_the_period_is_a_single_day_because_this_is_a_stock(conn, envelope):
     load(conn, envelope, "2026-09-09T06:00:00")
     starts, ends = zip(*conn.execute(
         "SELECT period_start, period_end FROM observations"
-    ).fetchall())
+    ).fetchall(), strict=True)
     assert starts == ends
 
 

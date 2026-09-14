@@ -509,3 +509,56 @@ the dashboard's staleness panel needs (ARCHITECTURE.md §5: warn if the newest r
 is older than 2× the cadence). PortWatch publishes weekly, on Tuesdays, and each
 release contains daily rows. The row granularity is already in the data, in
 `period_start`. Rules out: reading `cadence` as the spacing between observations.
+
+**2026-09-14 — `ruff` added as a development dependency.**
+Why: ARCHITECTURE.md §7 and NFR-53 put `ruff` in `make check`, and it is the
+only dependency added since the original six. It is a development tool, not
+something the system imports, so it lives in the dev group and nothing shipped
+depends on it. Configured with line-length 95 and the rule sets E, W, F, I, UP,
+B — deliberately not the whole catalogue, because a linter that shouts about
+style gets switched off, and then it is not catching the real errors either.
+Fixing the existing code to pass it was 30 findings, all formatting or import
+order, none of them bugs. Rules out: adding a formatter as well, for now; `ruff
+check` is doing the work and `ruff format` would rewrite every file at once.
+
+**2026-09-14 — `make ingest` is a Python module, not a Makefile loop.**
+Why: FR-07 wants every feed to run even when one fails, and a non-zero exit at
+the end if any did. A Makefile can do one or the other, not both. `ingest/
+__main__.py` calls each feed's `run()`, collects the `RunResult`s, prints a
+table and exits 1 if any failed. The feed list in it is written out by hand:
+adding a feed means one more line, and there is no discovery, no registry and no
+plugin mechanism — which is the thing CLAUDE.md actually forbids. Rules out:
+`make ingest` silently reporting success because the last feed happened to work.
+
+**2026-09-14 — The app reads through a read-only connection, and one small
+query module.**
+Why: FR-44 is enforced by a test that greps `app/` for the two view names it may
+not touch, so those names must not appear there at all — not even in a comment
+saying "never read this", which is one uncommented character away from doing it.
+All the app's SQL lives in `app/queries.py` so the whole surface can be checked
+by eye in one file. The connection is opened `read_only=True`: a dashboard has
+no business writing to `observations`, and saying so in code means a mistake
+cannot. The single exception is a note, which opens its own writable connection,
+inserts one row and closes. Rules out: ad-hoc SQL in a page, and any code path
+from the app to a table it should not touch.
+
+**2026-09-14 — Holdout weeks are drawn as breaks by inserting an empty point,
+and the app is not told which weeks they are.**
+Why: UI-01 wants the gaps visible rather than interpolated. A chart joins the
+last point before a hidden week straight to the first point after it, drawing a
+clean line across the gap — the exact illusion the holdout exists to prevent. So
+`break_the_line_at_missing_weeks()` puts a null into any ISO week with no rows
+at all, which stops the line. It works out which weeks those are from the data
+the app can already see, and never reads `split_mask`: the app does not need to
+know *why* a week is absent, only that it is, and not reading the mask keeps the
+app on the views ARCHITECTURE.md §3.5 allows it. Whole weeks only — breaking the
+line at every weekend would make the charts unreadable and hide the real gaps.
+Rules out: filling, smoothing or interpolating anything on the way to a chart.
+
+**2026-09-14 — Three charts, one per feed, with a series switch on two of them.**
+Why: PLAN.md says three charts and there are five series. One chart per feed,
+with a small radio for the feeds that carry two series, shows all five without
+inventing a fourth panel. Charts are never combined: Brent in dollars a barrel
+and OVX as an index share an entity but not a scale, and putting them on one
+axis would invite a comparison that means nothing. Rules out: a combined chart,
+and a series nobody can reach.

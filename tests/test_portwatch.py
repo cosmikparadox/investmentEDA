@@ -17,7 +17,7 @@ All offline, against tests/fixtures/portwatch_envelope.json.
 
 import copy
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import duckdb
@@ -91,7 +91,7 @@ def test_a_date_string_is_read_as_a_date():
 
 def test_epoch_milliseconds_are_read_as_the_same_date():
     """The shape the feed spec recorded. UTC, because their day boundary is."""
-    midnight = datetime(2026, 8, 24, tzinfo=timezone.utc).timestamp() * 1000
+    midnight = datetime(2026, 8, 24, tzinfo=UTC).timestamp() * 1000
     assert portwatch.to_date(midnight) == date(2026, 8, 24)
 
 
@@ -107,7 +107,7 @@ def test_both_date_shapes_produce_identical_rows(conn, envelope):
     as_epoch = edit_features(envelope, lambda feats: [
         f["attributes"].update(
             date=datetime.fromisoformat(f["attributes"]["date"])
-                 .replace(tzinfo=timezone.utc).timestamp() * 1000
+                 .replace(tzinfo=UTC).timestamp() * 1000
         ) for f in feats
     ])
     assert portwatch.parse(as_epoch, FIXTURE) == as_strings
@@ -143,7 +143,9 @@ def test_replaying_the_same_fetch_adds_nothing(conn, envelope):
 def test_a_silent_backfill_appends_rather_than_overwrites(conn, envelope):
     """PortWatch rewrites recent days with no announcement. Both counts survive."""
     load(conn, envelope, "2026-09-12T06:00:00")
-    backfilled = edit_features(envelope, lambda feats: feats[0]["attributes"].update(n_total=11))
+    backfilled = edit_features(
+        envelope, lambda feats: feats[0]["attributes"].update(n_total=11)
+    )
     load(conn, backfilled, "2026-09-19T06:00:00")
 
     counts = conn.execute(
@@ -201,7 +203,7 @@ def test_a_transit_count_covers_exactly_one_day(conn, envelope):
     load(conn, envelope, "2026-09-12T06:00:00")
     starts, ends = zip(*conn.execute(
         "SELECT period_start, period_end FROM observations"
-    ).fetchall())
+    ).fetchall(), strict=True)
     assert starts == ends
 
 
@@ -249,14 +251,18 @@ def test_a_repeated_day_is_refused(envelope):
 
 
 def test_a_date_in_the_future_is_refused(envelope):
-    future = edit_features(envelope, lambda feats: feats[0]["attributes"].update(date="2099-01-01"))
+    future = edit_features(
+        envelope, lambda feats: feats[0]["attributes"].update(date="2099-01-01")
+    )
     with pytest.raises(ParseError, match="future"):
         portwatch.validate(future)
 
 
 def test_a_date_before_the_split_mask_starts_is_refused(envelope):
     """Those rows would be stored and then never appear in any view."""
-    ancient = edit_features(envelope, lambda feats: feats[0]["attributes"].update(date="2014-12-31"))
+    ancient = edit_features(
+        envelope, lambda feats: feats[0]["attributes"].update(date="2014-12-31")
+    )
     with pytest.raises(ParseError, match="split_mask"):
         portwatch.validate(ancient)
 
@@ -282,7 +288,9 @@ def test_a_whole_run_is_recorded(conn, offline_portwatch):
     ).fetchone() == ("portwatch_hormuz", "ok", 16)
 
 
-def test_a_source_failure_is_recorded_and_returned_not_raised(conn, offline_portwatch, monkeypatch):
+def test_a_source_failure_is_recorded_and_returned_not_raised(
+    conn, offline_portwatch, monkeypatch
+):
     from core.errors import FeedError
 
     def refuse(feed_id, url, params=None, **kwargs):

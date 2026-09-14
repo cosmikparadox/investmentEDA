@@ -12,7 +12,8 @@ from datetime import datetime
 import duckdb
 import pytest
 
-from core import clock, logging as clog, paths
+from core import clock, paths
+from core import logging as clog
 from core.errors import StorageError
 from ingest.runs import RunResult, finish_run, start_run
 
@@ -49,7 +50,9 @@ def test_a_successful_run_writes_exactly_one_row(conn):
 
     assert len(rows(conn)) == 1
     row = rows(conn)[0]
-    assert row[1:6] == ("fred_brent_ovx", "ok", 12180, 6090, "data/bronze/fred_brent_ovx/x.json")
+    assert row[1:6] == (
+        "fred_brent_ovx", "ok", 12180, 6090, "data/bronze/fred_brent_ovx/x.json"
+    )
     assert row[6] is None            # no error text on a successful run
     assert row[8] is not None        # finished_at filled in
 

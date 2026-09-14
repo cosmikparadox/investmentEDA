@@ -25,7 +25,7 @@ For that to work, import the module and call `clock.utc_now()` — not
 monkeypatching the module cannot reach.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def utc_now() -> datetime:
@@ -35,7 +35,7 @@ def utc_now() -> datetime:
     the value is UTC whether or not it is labelled, and labelling it would mean
     DuckDB storing it in a different column type from every other timestamp.
     """
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def to_utc_naive(moment: datetime) -> datetime:
@@ -48,4 +48,4 @@ def to_utc_naive(moment: datetime) -> datetime:
     """
     if moment.tzinfo is None:
         return moment
-    return moment.astimezone(timezone.utc).replace(tzinfo=None)
+    return moment.astimezone(UTC).replace(tzinfo=None)

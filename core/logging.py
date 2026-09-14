@@ -2,7 +2,8 @@
 
 A log line looks like this:
 
-    ts=2026-09-11T14:02:11 level=INFO module=ingest.fred feed=fred_brent_ovx msg="fetched 2 series"
+    ts=2026-09-11T14:02:11 level=INFO module=ingest.fred feed=fred_brent_ovx
+    msg="fetched 2 series"
 
 `key=value` rather than a sentence, because it can be read by eye now and by a
 script later without writing a parser.

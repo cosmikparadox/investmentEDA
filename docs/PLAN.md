@@ -16,7 +16,7 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [x] Owner: get a free EIA API key (eia.gov/opendata). Put it in `.env`. Never commit it.
 - [x] Owner: get a free FRED API key (fred.stlouisfed.org). Same.
 - [x] CC: `core/` package per ARCHITECTURE.md §2: paths, config, logging with key redaction, http with explicit timeouts, typed errors. Unit tests for redaction and config. **Done 2026-09-11, 20 tests. Q2 answered: build it now.**
-- [~] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, `ingest_runs`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them. `db/units.md`. **`ingest_runs` added 2026-09-11. `db/units.md` still to do.**
+- [x] CC: `db/schema.sql` with all objects from DESIGN.md including `observation_log`, `split_mask`, `ingest_runs`, and the `observations_explore` / `observations_holdout` views. `db/init.py` that creates them. `db/units.md`. **`ingest_runs` added 2026-09-11; `db/units.md` written 2026-09-14.**
 - [x] CC: `ingest/bronze.py` (atomic write, never overwrite) and `ingest/runs.py` (RunResult, start_run, finish_run). **Both done 2026-09-11 — `runs.py` 11 tests, `bronze.py` 9. Q4 answered: CC writes it, owner migrates onto it.**
 - [x] CC: `core/clock.py` — every timestamp in the database is UTC, from one function. **Q3 answered 2026-09-11; convention documented at the top of `db/schema.sql`, 6 tests.**
 - [x] CC: `parse_version` on `observations` and in its primary key, two-stage `observations_latest`, `parse_corrections` table, `db/migrations.py`. **Q1 answered 2026-09-11; 10 tests in `tests/test_views.py`.**
@@ -38,15 +38,15 @@ before accepting. "Research" means the coordination chat, not Claude Code.
 - [x] CC: `ingest/portwatch.py`. **Done 2026-09-12 — the full history every call, 2,806 days x 2 series = 5,612 rows a run, one `received_at`, 21 tests.**
 - [x] CC: fixture payloads and idempotency tests for all three. **Done 2026-09-12: `test_idempotency.py` (FRED, 24), `test_eia.py` (17), `test_portwatch.py` (21). 120 tests in the suite.**
 - [ ] Owner: run the tests. Break one on purpose. Understand why it fails.
-- [ ] CC: `Makefile` with `init`, `ingest`, `test`, `dashboard` targets.
-- [ ] Milestone: `make ingest` twice in a row; row count in `observations` exactly doubles.
+- [x] CC: `Makefile` with `init`, `ingest`, `test`, `check`, `dashboard`, `map` targets. **Done 2026-09-14. `make ingest` runs every feed, continues past a failure and exits 1 if any failed (FR-07), tested.**
+- [x] Milestone: `make ingest` twice in a row; row count in `observations` exactly doubles. **Verified 2026-09-14: three feeds, 12,324 rows a run.**
 
 ## Week 3 — see it
 
-- [ ] CC: `app/dashboard.py` — three charts from `observations_explore` (never `_latest`), a table of `feed_id, max(received_at)`, a "Note this" box under each chart that writes to `observation_log` with the visible series and date range attached, and a Log page listing entries newest-first. No edit, no delete.
+- [x] CC: `app/dashboard.py` — three charts, a "Last received" table, a "Note this" box under each chart, a runs panel, and a read-only Log page. **Done 2026-09-14. FR-40 to FR-44; the grep test for FR-44 is `tests/test_app_views.py`. Driven in a real browser: charts render, the holdout gaps are breaks in the line, a note saved from the page appears on the Log page.**
 - [ ] Owner: verify the holdout gaps are visible in the charts. If the charts look continuous, the app is reading the wrong view.
 - [ ] Owner: every day this week, look at the dashboard for ten minutes and write at least one note. Bad notes are fine. "Nothing moved" is a note.
-- [ ] CC: `app/export_map.py` — CSV of entities with lat/lon.
+- [x] CC: `app/export_map.py` — CSV of entities with lat/lon. **Done 2026-09-14: `make map` writes `data/export/entities.csv`, one row, the Strait of Hormuz.**
 - [ ] Owner: open Kepler.gl (kepler.gl/demo), drag the CSV in, see the Hormuz marker. Screenshot it into `docs/`.
 - [ ] Owner: run `make ingest` every day this week by hand. Watch `received_at` accumulate. This is the whole point of the design and you should see it happen.
 - [ ] Milestone: dashboard shows three live series and the map shows one dot.

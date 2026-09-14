@@ -10,14 +10,14 @@ Nothing here touches the network. core.http.get is the one function the tests
 replace (ARCHITECTURE.md §7).
 """
 
-import json
 from datetime import datetime
 from pathlib import Path
 
 import httpx
 import pytest
 
-from core import config, http, logging as clog, paths
+from core import config, http, paths
+from core import logging as clog
 from core.errors import BODY_CHARS, ConfigError, FeedError, ParseError, StorageError
 
 FAKE_KEY = "abcd1234efgh5678ijkl"
@@ -89,7 +89,9 @@ def test_secret_params_are_masked_in_a_url():
 
 def test_settings_repr_does_not_show_the_keys():
     """print(settings) must not put a key on screen, or into a chat window."""
-    shown = repr(config.Settings(FAKE_KEY, FAKE_KEY, "INFO", Path("data/x.duckdb")))
+    shown = repr(
+        config.Settings(FAKE_KEY, FAKE_KEY, "INFO", Path("data/x.duckdb"))
+    )
     assert FAKE_KEY not in shown
     assert "set" in shown
 
@@ -200,7 +202,9 @@ def test_timeouts_are_always_set(monkeypatch):
 # --------------------------------------------------------------------------
 
 def test_each_error_names_the_feed_and_keeps_its_context():
-    feed = FeedError("f", "HTTP 500", url="https://x.test?api_key=***", status=500, body="oops")
+    feed = FeedError(
+        "f", "HTTP 500", url="https://x.test?api_key=***", status=500, body="oops"
+    )
     assert "f: HTTP 500" in str(feed)
     assert "status=500" in str(feed)
 
