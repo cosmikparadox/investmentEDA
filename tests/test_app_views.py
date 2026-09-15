@@ -190,31 +190,39 @@ def test_a_running_ingest_is_reported_as_busy_not_as_a_crash(conn):
     the page has to say so — showing a raw IO traceback instead makes a normal
     event look like a broken app.
 
-    The lock is taken by a real second process here, because that is what the
+    The lock is taken by a real second process, because that is what the
     situation actually is; a mocked exception would prove only that the mock
-    works. It is skipped on Linux and macOS, which allow a read-only connection
-    alongside a writer — Windows does not, and that difference is exactly why
+    works. The writer announces itself on stdout before we try, so this is not
+    a race between the two processes — without that handshake whichever opened
+    first would win and the test would pass or skip at random.
+
+    Skipped where the platform allows a reader alongside a writer, which Linux
+    and macOS sometimes do and Windows does not — the difference is exactly why
     this went unnoticed until the owner ran it on their own machine. The mapping
     from DuckDB's error to our own is checked unconditionally below.
     """
     import subprocess
     import sys
-    import time
 
     holder = subprocess.Popen(
         [sys.executable, "-c",
-         f"import duckdb, time; duckdb.connect({str(conn)!r}); time.sleep(30)"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+         f"import duckdb, sys, time; duckdb.connect({str(conn)!r}); "
+         f"print('locked', flush=True); time.sleep(30)"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
     )
     try:
-        # Give the other process a moment to actually take the lock.
-        for _ in range(50):
-            try:
-                queries.connect().close()
-                time.sleep(0.1)
-            except queries.DatabaseBusy as busy:
-                assert "already open" in str(busy) or "another process" in str(busy)
-                break
+        assert holder.stdout.readline().strip() == "locked", "the writer never started"
+
+        try:
+            queries.connect().close()
+        except queries.DatabaseBusy as busy:
+            # DuckDB words this differently per platform — "already open in ...
+            # (PID n)" on Windows, "Could not set lock on file" elsewhere — so
+            # match the idea rather than one platform's sentence.
+            assert any(
+                phrase in str(busy)
+                for phrase in ("lock", "already open", "another process")
+            ), str(busy)
         else:
             pytest.skip(
                 "this platform allows a reader alongside a writer; Windows does not"
